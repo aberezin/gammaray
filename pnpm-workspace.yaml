@@ -1,0 +1,9 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+allowBuilds:
+  '@apollo/protobufjs': true
+  '@nestjs/core': true
+  protobufjs: true
+  rxdb: true
+  sharp: true
