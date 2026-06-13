@@ -5,8 +5,15 @@ node_modules/
 
 # Build outputs
 dist/
+**/dist/
 .next/
 out/
+
+# Compiled JS/declaration files that may land alongside TypeScript source
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
 
 # Env files
 .env
