@@ -18,6 +18,8 @@ export const metrics = {
   eventTime: new Trend('gqlws_event_time', true), // push -> event received
   eventsReceived: new Counter('gqlws_events_received'),
   sessionErrors: new Counter('gqlws_session_errors'),
+  connectionsOpened: new Counter('gqlws_connections_opened'), // reached connection_ack
+  connectionsClosed: new Counter('gqlws_connections_closed'), // socket closed
 }
 
 // Register a fresh user. `label` makes the email unique across clients/runs.
@@ -134,6 +136,79 @@ export function runSubscriptionClient({ token, clientId, expectedVersion = 0, so
 
       // Safety net so a stuck socket never hangs the run.
       socket.setTimeout(() => socket.close(), socketTimeoutMs)
+    },
+  )
+
+  result.wsStatus = res && res.status
+  return result
+}
+
+// Open a subscription and hold it OPEN and idle for `holdMs`, replying to pings,
+// then close cleanly. Used by the connection-ramp test to measure how many
+// concurrent subscriptions the server sustains. Returns { wsStatus, acked }.
+// Genuine protocol/auth failures are recorded as session errors; transport-level
+// socket errors (e.g. teardown at end of test) are intentionally not, so failed
+// upgrades surface via wsStatus/checks rather than as false error counts.
+export function holdSubscriptionOpen({ token, clientId, holdMs = 10000 }) {
+  const subscription = `subscription { noteUpdated { id content version updatedAt } }`
+  const result = { wsStatus: 0, acked: false }
+  let initSentAt = 0
+
+  const res = ws.connect(
+    `${WS_URL}/graphql`,
+    { headers: { 'Sec-WebSocket-Protocol': GRAPHQL_WS_PROTOCOL } },
+    function (socket) {
+      socket.on('open', () => {
+        initSentAt = Date.now()
+        socket.send(
+          JSON.stringify({
+            type: 'connection_init',
+            payload: { Authorization: `Bearer ${token}` },
+          }),
+        )
+      })
+
+      socket.on('message', (raw) => {
+        let msg
+        try {
+          msg = JSON.parse(raw)
+        } catch (_e) {
+          metrics.sessionErrors.add(1)
+          return
+        }
+
+        switch (msg.type) {
+          case 'connection_ack':
+            result.acked = true
+            metrics.ackTime.add(Date.now() - initSentAt)
+            metrics.connectionsOpened.add(1)
+            socket.send(
+              JSON.stringify({ id: '1', type: 'subscribe', payload: { query: subscription } }),
+            )
+            break
+          case 'ping':
+            socket.send(JSON.stringify({ type: 'pong' }))
+            break
+          case 'error':
+          case 'connection_error':
+            metrics.sessionErrors.add(1)
+            socket.close()
+            break
+          default:
+            break
+        }
+      })
+
+      socket.on('close', () => {
+        metrics.connectionsClosed.add(1)
+      })
+
+      // Stay connected and idle, then close cleanly so checks are recorded and
+      // teardown doesn't masquerade as an error.
+      socket.setTimeout(() => {
+        socket.send(JSON.stringify({ id: '1', type: 'complete' }))
+        socket.close()
+      }, holdMs)
     },
   )
 

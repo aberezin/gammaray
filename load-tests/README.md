@@ -58,6 +58,10 @@ k6 run load-tests/k6/n-sockets.js
 CLIENTS=200 k6 run load-tests/k6/n-sockets.js
 CLIENTS=500 MAX_DURATION=5m k6 run load-tests/k6/n-sockets.js
 
+# Test #3 — connection ramp: hold N concurrent open subscriptions
+k6 run load-tests/k6/connection-ramp.js                       # ramp to 200
+MAX=500 RAMP_UP=30s HOLD=20s k6 run load-tests/k6/connection-ramp.js
+
 # Point at a non-default host
 API_URL=http://localhost:3001 WS_URL=ws://localhost:3001 \
   k6 run load-tests/k6/single-socket.js
@@ -71,15 +75,28 @@ A run passes when every `threshold` holds (shown with ✓/✗ in the summary).
 |------|-------------------|
 | `k6/single-socket.js` | One graphql-ws connection: auth → subscribe → push → receive event. Verifies the realtime pipe and records ack/event latency. |
 | `k6/n-sockets.js` | N independent clients (own user/JWT/note/socket) connecting concurrently, each running the full lifecycle. Tests connection capacity and per-user fan-out isolation (each socket must receive only its own event). Scale with `CLIENTS`. |
-| `k6/lib/gqlws.js` | Shared helpers: REST auth, `pushNote`, and the graphql-ws subscription client lifecycle. Defines the custom metrics. |
+| `k6/connection-ramp.js` | Ramps to `MAX` **concurrent open** subscriptions and holds the plateau (idle sockets), to find where realtime capacity degrades. This is the test that stresses the in-process `SyncBroker`'s per-connection overhead. Watch the live `vus` line for concurrency. |
+| `k6/lib/gqlws.js` | Shared helpers: REST auth, `pushNote`, the graphql-ws subscription client lifecycle, and the idle connection-hold used by the ramp test. Defines the custom metrics. |
 
 ### Reference results (local, single dev machine)
+
+`n-sockets.js` (connect → push → disconnect):
 
 | Clients | Checks | Events | Errors | push→event p95 | ws upgrade p95 |
 |--------:|:------:|:------:|:------:|---------------:|---------------:|
 | 1       | 7/7    | 1      | 0      | ~17 ms         | <1 ms          |
 | 50      | 251/251| 50     | 0      | ~38 ms         | ~31 ms         |
 | 200     | 1001/1001| 200  | 0      | ~63 ms         | ~83 ms         |
+
+`connection-ramp.js` (concurrent held subscriptions):
+
+| Peak concurrent | Checks | Errors | ack p95 | ws upgrade p95 |
+|----------------:|:------:|:------:|--------:|---------------:|
+| 200             | 1399/1399 | 0   | ~1 ms   | ~1.8 ms        |
+| 500             | 3997/3997 | 0   | ~1 ms   | ~0.9 ms        |
+
+No ceiling reached at 500 concurrent on a single dev machine — latencies stay
+sub-millisecond. Push higher (`MAX=1000+`) to find the real limit.
 
 ### Custom metrics emitted
 
@@ -90,10 +107,9 @@ A run passes when every `threshold` holds (shown with ✓/✗ in the summary).
 
 ## Roadmap (next tests to add)
 
-1. **Connection ramp** — `n-sockets.js` covers a fixed concurrent N; extend it
-   with a ramping executor to find where upgrades start failing or memory climbs
-   (the in-process `SyncBroker` is the suspect ceiling — see
-   `apps/api/src/sync/sync.broker.ts`).
+1. ~~**Connection ramp**~~ — done (`connection-ramp.js`). No ceiling at 500 on a
+   dev box; rerun with `MAX=1000+` (and on prod-like hardware) to find the real
+   `SyncBroker` limit (see `apps/api/src/sync/sync.broker.ts`).
 2. **Push throughput** — fixed pool of subscribers, increasing `pushNote` rate;
    measure end-to-end fan-out latency (`gqlws_event_time` under load).
 3. **Conflict storm** — many clients pushing against the same note with stale
