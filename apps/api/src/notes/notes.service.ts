@@ -39,7 +39,9 @@ export class NotesService {
     expectedVersion: number,
     clientId: string,
   ): Promise<ConflictResultModel> {
-    return this.dataSource.transaction(async (manager) => {
+    let emitNote: NoteModel | null = null
+
+    const result = await this.dataSource.transaction(async (manager) => {
       const noteRepo = manager.getRepository(NoteEntity)
       const revRepo = manager.getRepository(NoteRevisionEntity)
 
@@ -64,7 +66,7 @@ export class NotesService {
             conflictStatus: ConflictStatus.None,
           }),
         )
-        this.broker.emit(userId, toNoteModel(created))
+        emitNote = toNoteModel(created)
         return { conflict: false, note: toNoteModel(created), revision: toRevisionModel(rev) }
       }
 
@@ -101,9 +103,13 @@ export class NotesService {
         }),
       )
 
-      this.broker.emit(userId, toNoteModel(updated as NoteEntity))
+      emitNote = toNoteModel(updated as NoteEntity)
       return { conflict: false, note: toNoteModel(updated as NoteEntity), revision: toRevisionModel(rev) }
     })
+
+    // Emit after transaction commits so pull.handler sees the new state
+    if (emitNote) this.broker.emit(userId, emitNote)
+    return result
   }
 
   async resolveConflict(
@@ -112,7 +118,7 @@ export class NotesService {
     resolvedContent: string,
     clientId: string,
   ): Promise<NoteModel> {
-    return this.dataSource.transaction(async (manager) => {
+    const noteModel = await this.dataSource.transaction(async (manager) => {
       const noteRepo = manager.getRepository(NoteEntity)
       const revRepo = manager.getRepository(NoteRevisionEntity)
 
@@ -148,9 +154,12 @@ export class NotesService {
         .execute()
 
       const result = { ...note, content: resolvedContent, version: nextVersion, updatedAt: new Date() }
-      this.broker.emit(userId, toNoteModel(result as NoteEntity))
       return toNoteModel(result as NoteEntity)
     })
+
+    // Emit after transaction commits so pull.handler sees the committed state
+    this.broker.emit(userId, noteModel)
+    return noteModel
   }
 }
 

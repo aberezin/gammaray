@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { useSession, signOut } from 'next-auth/react'
+import { signOut } from 'next-auth/react'
 import { NoteEditor, RevisionList, ConflictBanner, OfflineToggle, SyncIndicator } from '@gammaray/ui'
 import { SyncStatus } from '@gammaray/core'
 import { useNoteStore } from '@/store/note.store'
@@ -19,6 +19,8 @@ export function NotePageClient({ accessToken }: Props) {
   const [content, setContent] = useState('')
   const [revisions, setRevisions] = useState<RevisionDto[]>([])
   const replicationRef = useRef<ReturnType<typeof startReplication> | null>(null)
+  // Buffer edits that arrive before the initial pull populates RxDB
+  const pendingContentRef = useRef<string | null>(null)
   const clientId = useRef<string>(
     typeof sessionStorage !== 'undefined'
       ? (sessionStorage.getItem('clientId') ?? (() => {
@@ -41,65 +43,86 @@ export function NotePageClient({ accessToken }: Props) {
     }
   }, [])
 
+  // Effect 1: Local subscription — always active (even while offline).
+  // Applies buffered edits once the note first arrives from the server.
   useEffect(() => {
-    let cleanup: (() => void) | undefined
+    let active = true
+    let sub: { unsubscribe: () => void } | undefined
 
-    async function init() {
+    async function initLocal() {
       const db = await getDatabase()
+      if (!active) return
+
+      sub = db.note.find().$.subscribe((docs) => {
+        const doc = docs[0]
+        if (!doc) return
+        const pending = pendingContentRef.current
+        if (pending !== null) {
+          pendingContentRef.current = null
+          void doc.patch({ content: pending }).then(() => setContent(pending))
+        } else {
+          setContent(doc.content)
+        }
+      })
+    }
+
+    void initLocal()
+    return () => {
+      active = false
+      sub?.unsubscribe()
+    }
+  }, [])
+
+  // Effect 2: Replication — only runs when online. Re-runs (restart) on
+  // offline→online transition, and is cleaned up on online→offline.
+  useEffect(() => {
+    if (offline) return
+
+    let active = true
+    let replication: ReturnType<typeof startReplication>['replication'] | undefined
+    let wsClient: ReturnType<typeof startReplication>['wsClient'] | undefined
+
+    async function initReplication() {
+      const db = await getDatabase()
+      if (!active) return
       const collection = db.note
 
-      // Reactively bind local doc to textarea
-      const sub = collection.find().$.subscribe((docs) => {
-        if (docs[0]) setContent(docs[0].content)
-      })
-
-      const { replication, wsClient } = startReplication(
+      const started = startReplication(
         collection,
         gqlClient.current,
         accessToken,
         clientId.current,
-        ({ serverContent, serverVersion, noteId }) => {
-          const docs = collection.find().exec()
-          void docs.then((d) => {
-            setConflict({
-              noteId,
-              serverContent,
-              serverVersion,
-              clientContent: d[0]?.content ?? '',
-            })
-          })
+        ({ serverContent, serverVersion, noteId, clientContent }) => {
+          setConflict({ noteId, serverContent, serverVersion, clientContent })
         },
+        () => { void fetchRevisions() },
       )
 
-      replicationRef.current = { replication, wsClient }
+      if (!active) {
+        void started.replication.cancel()
+        void started.wsClient.dispose()
+        return
+      }
 
-      replication.active$.subscribe((active) => {
-        if (!offline) setSyncStatus(active ? SyncStatus.Syncing : SyncStatus.Synced)
+      replication = started.replication
+      wsClient = started.wsClient
+      replicationRef.current = started
+
+      replication.active$.subscribe((isActive) => {
+        setSyncStatus(isActive ? SyncStatus.Syncing : SyncStatus.Synced)
       })
 
       await fetchRevisions()
-
-      cleanup = () => {
-        sub.unsubscribe()
-        void replication.cancel()
-        void wsClient.dispose()
-      }
     }
 
-    void init()
-    return () => cleanup?.()
-  }, [accessToken, fetchRevisions, offline, setConflict, setSyncStatus])
-
-  // Pause/resume replication when offline toggle changes
-  useEffect(() => {
-    if (!replicationRef.current) return
-    const { replication } = replicationRef.current
-    if (offline) {
-      void replication.cancel()
-    } else {
-      void replication.reSync()
+    void initReplication()
+    return () => {
+      active = false
+      if (replication) void replication.cancel()
+      if (wsClient) void wsClient.dispose()
+      replicationRef.current = null
     }
-  }, [offline])
+  }, [offline, accessToken, fetchRevisions, setConflict, setSyncStatus])
 
   async function handleChange(value: string) {
     setContent(value)
@@ -107,6 +130,10 @@ export function NotePageClient({ accessToken }: Props) {
     const existing = await db.note.findOne().exec()
     if (existing) {
       await existing.patch({ content: value })
+    } else {
+      // Initial pull hasn't completed yet; buffer the edit.
+      // Effect 1's subscription applies it once the note arrives from the server.
+      pendingContentRef.current = value
     }
   }
 
@@ -133,9 +160,6 @@ export function NotePageClient({ accessToken }: Props) {
     )
     setConflict(null)
     setContent(resolved.content)
-    const db = await getDatabase()
-    const doc = await db.note.findOne().exec()
-    await doc?.patch({ content: resolved.content, version: resolved.version })
     await fetchRevisions()
   }
 
@@ -149,10 +173,14 @@ export function NotePageClient({ accessToken }: Props) {
     )
     setConflict(null)
     setContent(resolved.content)
+    await fetchRevisions()
+  }
+
+  async function handleRestore(content: string) {
+    setContent(content)
     const db = await getDatabase()
     const doc = await db.note.findOne().exec()
-    await doc?.patch({ content: resolved.content, version: resolved.version })
-    await fetchRevisions()
+    if (doc) await doc.patch({ content })
   }
 
   return (
@@ -193,7 +221,7 @@ export function NotePageClient({ accessToken }: Props) {
           <h2 style={{ margin: '0 0 12px', fontSize: 15, color: '#374151' }}>Version history</h2>
           <RevisionList
             revisions={revisions}
-            onRestore={(c) => handleMerge(c)}
+            onRestore={handleRestore}
           />
         </div>
       </div>

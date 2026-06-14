@@ -29,7 +29,7 @@ const NOTE_UPDATED_SUB = `
 `
 
 const RESOLVE_CONFLICT = `
-  mutation ResolveConflict($noteId: ID!, $resolvedContent: String!, $clientId: String!) {
+  mutation ResolveConflict($noteId: String!, $resolvedContent: String!, $clientId: String!) {
     resolveConflict(noteId: $noteId, resolvedContent: $resolvedContent, clientId: $clientId) {
       id content version updatedAt
     }
@@ -40,6 +40,7 @@ export type ConflictHandler = (opts: {
   serverContent: string
   serverVersion: number
   noteId: string
+  clientContent: string
 }) => void
 
 export function startReplication(
@@ -48,6 +49,7 @@ export function startReplication(
   accessToken: string,
   clientId: string,
   onConflict: ConflictHandler,
+  onPushSuccess?: () => void,
 ) {
   const wsClient = createClient({
     url: `${process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:3001'}/graphql`,
@@ -59,6 +61,20 @@ export function startReplication(
     replicationIdentifier: 'notesync-gql',
     live: true,
     retryTime: 5_000,
+
+    // When the push handler returns the server note (to update assumedMasterState),
+    // RxDB calls this conflict handler. If the content is the same (only version
+    // incremented by the server), declare isEqual so RxDB updates assumedMasterState
+    // without scheduling another push. For real divergence (different content), let
+    // the server state win so the next push sends the correct base version.
+    conflictHandler: async (input) => {
+      const local = input.newDocumentState as NoteRxDocument
+      const master = input.realMasterState as NoteRxDocument
+      if (local.content === master.content) {
+        return { isEqual: true }
+      }
+      return { documentData: master }
+    },
 
     pull: {
       async handler(_lastCheckpoint, _batchSize) {
@@ -110,9 +126,19 @@ export function startReplication(
             serverContent: result.serverContent,
             serverVersion: result.serverVersion,
             noteId: doc.id,
+            clientContent: doc.content,
           })
-          // Return server state as master so RxDB knows the real state
           return [{ ...doc, content: result.serverContent, version: result.serverVersion, _deleted: false }]
+        }
+
+        // Notify caller so it can refresh the revision list.
+        onPushSuccess?.()
+
+        // Return the server note so RxDB updates assumedMasterState to the new version.
+        // The custom conflictHandler returns isEqual:true when content matches,
+        // preventing another push and breaking the otherwise-infinite push loop.
+        if (result.note) {
+          return [{ ...doc, version: result.note.version, updatedAt: result.note.updatedAt, _deleted: false }]
         }
         return []
       },
