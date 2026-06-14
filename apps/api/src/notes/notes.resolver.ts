@@ -46,11 +46,10 @@ export class NotesResolver {
     return this.notes.resolveConflict(user.id, noteId, resolvedContent, clientId)
   }
 
-  @Subscription(() => NoteModel, {
-    filter: (payload: { noteUpdated: NoteModel }, _vars: unknown, context: { req: { user: UserEntity } }) =>
-      payload.noteUpdated.id === context.req?.user?.id,
-  })
-  noteUpdated(@CurrentUser() _user: UserEntity) {
-    return this.broker.asyncIterator()
+  @Subscription(() => NoteModel)
+  noteUpdated(@CurrentUser() user: UserEntity) {
+    // Per-user topic: every payload on this channel already belongs to the
+    // authenticated user, so no payload filter is needed.
+    return this.broker.asyncIterator(user.id)
   }
 }

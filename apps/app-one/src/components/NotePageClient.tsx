@@ -14,13 +14,21 @@ interface Props {
   accessToken: string
 }
 
+// How long the editor waits after the last keystroke before writing to RxDB.
+// Collapses a burst of typing into a single versioned write.
+const FLUSH_DEBOUNCE_MS = 400
+
 export function NotePageClient({ accessToken }: Props) {
   const { syncStatus, conflict, offline, setSyncStatus, setConflict, setOffline } = useNoteStore()
   const [content, setContent] = useState('')
   const [revisions, setRevisions] = useState<RevisionDto[]>([])
   const replicationRef = useRef<ReturnType<typeof startReplication> | null>(null)
-  // Buffer edits that arrive before the initial pull populates RxDB
+  // Holds the latest unsynced local edit (null when the editor is in sync with
+  // RxDB). Also buffers edits that arrive before the initial pull populates RxDB.
   const pendingContentRef = useRef<string | null>(null)
+  // Debounce timer so a burst of keystrokes collapses into a single versioned
+  // write, instead of one push per character racing the version baseline.
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clientId = useRef<string>(
     typeof sessionStorage !== 'undefined'
       ? (sessionStorage.getItem('clientId') ?? (() => {
@@ -43,6 +51,26 @@ export function NotePageClient({ accessToken }: Props) {
     }
   }, [])
 
+  // Persist the latest pending edit to RxDB as a single write. This is the ONLY
+  // path that writes the note; keeping it the sole writer prevents two edits
+  // racing the same version baseline (which produced false self-conflicts).
+  // Replication picks the write up and pushes once. Driven by a debounce timer.
+  const flushEdit = useCallback(async () => {
+    const value = pendingContentRef.current
+    if (value === null) return
+    const db = await getDatabase()
+    const existing = await db.note.findOne().exec()
+    if (!existing) {
+      // Note not created by the initial pull yet — retry shortly so the buffered
+      // edit isn't lost. (Avoids a second writer in Effect 1.)
+      flushTimer.current = setTimeout(() => { void flushEdit() }, FLUSH_DEBOUNCE_MS)
+      return
+    }
+    await existing.patch({ content: value })
+    // Mark clean only if no newer keystroke arrived during the await.
+    if (pendingContentRef.current === value) pendingContentRef.current = null
+  }, [])
+
   // Effect 1: Local subscription — always active (even while offline).
   // Applies buffered edits once the note first arrives from the server.
   useEffect(() => {
@@ -56,13 +84,11 @@ export function NotePageClient({ accessToken }: Props) {
       sub = db.note.find().$.subscribe((docs) => {
         const doc = docs[0]
         if (!doc) return
-        const pending = pendingContentRef.current
-        if (pending !== null) {
-          pendingContentRef.current = null
-          void doc.patch({ content: pending }).then(() => setContent(pending))
-        } else {
-          setContent(doc.content)
-        }
+        // While the user has an unsynced local edit, don't overwrite the editor
+        // with the store's value — that would clobber in-progress typing. The
+        // debounce timer (flushEdit) is the single writer that persists it.
+        if (pendingContentRef.current !== null) return
+        setContent(doc.content)
       })
     }
 
@@ -124,17 +150,34 @@ export function NotePageClient({ accessToken }: Props) {
     }
   }, [offline, accessToken, fetchRevisions, setConflict, setSyncStatus])
 
-  async function handleChange(value: string) {
-    setContent(value)
-    const db = await getDatabase()
-    const existing = await db.note.findOne().exec()
-    if (existing) {
-      await existing.patch({ content: value })
-    } else {
-      // Initial pull hasn't completed yet; buffer the edit.
-      // Effect 1's subscription applies it once the note arrives from the server.
-      pendingContentRef.current = value
+  // Flush any pending edit on unmount so the last keystrokes aren't lost.
+  useEffect(() => {
+    return () => {
+      if (flushTimer.current) clearTimeout(flushTimer.current)
+      void flushEdit()
     }
+  }, [flushEdit])
+
+  function handleChange(value: string) {
+    // Reflect the keystroke immediately for a responsive editor.
+    setContent(value)
+    // Record as the latest unsynced edit and debounce the actual RxDB write so a
+    // burst of typing becomes one versioned write rather than one push per key.
+    pendingContentRef.current = value
+    if (flushTimer.current) clearTimeout(flushTimer.current)
+    flushTimer.current = setTimeout(() => { void flushEdit() }, FLUSH_DEBOUNCE_MS)
+  }
+
+  // Toggling connectivity must not strand a debounced edit: flush it now so the
+  // pending write is queued before replication starts/stops. Without this, an
+  // edit made just before going online could be lost on the transition.
+  function handleToggleOffline(value: boolean) {
+    if (flushTimer.current) {
+      clearTimeout(flushTimer.current)
+      flushTimer.current = null
+    }
+    void flushEdit()
+    setOffline(value)
   }
 
   async function handleKeepMine() {
@@ -188,7 +231,7 @@ export function NotePageClient({ accessToken }: Props) {
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ margin: 0, fontSize: 20 }}>NoteSync</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <OfflineToggle offline={offline} onToggle={setOffline} />
+          <OfflineToggle offline={offline} onToggle={handleToggleOffline} />
           <SyncIndicator status={syncStatus} />
           <button
             onClick={() => signOut()}

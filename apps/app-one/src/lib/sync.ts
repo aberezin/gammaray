@@ -62,19 +62,11 @@ export function startReplication(
     live: true,
     retryTime: 5_000,
 
-    // When the push handler returns the server note (to update assumedMasterState),
-    // RxDB calls this conflict handler. If the content is the same (only version
-    // incremented by the server), declare isEqual so RxDB updates assumedMasterState
-    // without scheduling another push. For real divergence (different content), let
-    // the server state win so the next push sends the correct base version.
-    conflictHandler: async (input) => {
-      const local = input.newDocumentState as NoteRxDocument
-      const master = input.realMasterState as NoteRxDocument
-      if (local.content === master.content) {
-        return { isEqual: true }
-      }
-      return { documentData: master }
-    },
+    // Note: conflict reconciliation uses RxDB's default collection conflictHandler.
+    // When the push handler returns the server note to advance assumedMasterState,
+    // the default handler resolves master-wins (and isEqual when data matches), so
+    // there is no re-push loop. The debounce in the editor ensures the pushed
+    // content matches the local doc, so no in-flight edits are lost here.
 
     pull: {
       async handler(_lastCheckpoint, _batchSize) {
