@@ -53,6 +53,11 @@ pnpm --filter @gammaray/api dev   # listens on :3001
 # Test #1 — a single WebSocket subscription connection (baseline)
 k6 run load-tests/k6/single-socket.js
 
+# Test #2 — N independent clients (default 50), scale with CLIENTS
+k6 run load-tests/k6/n-sockets.js
+CLIENTS=200 k6 run load-tests/k6/n-sockets.js
+CLIENTS=500 MAX_DURATION=5m k6 run load-tests/k6/n-sockets.js
+
 # Point at a non-default host
 API_URL=http://localhost:3001 WS_URL=ws://localhost:3001 \
   k6 run load-tests/k6/single-socket.js
@@ -65,6 +70,16 @@ A run passes when every `threshold` holds (shown with ✓/✗ in the summary).
 | File | What it exercises |
 |------|-------------------|
 | `k6/single-socket.js` | One graphql-ws connection: auth → subscribe → push → receive event. Verifies the realtime pipe and records ack/event latency. |
+| `k6/n-sockets.js` | N independent clients (own user/JWT/note/socket) connecting concurrently, each running the full lifecycle. Tests connection capacity and per-user fan-out isolation (each socket must receive only its own event). Scale with `CLIENTS`. |
+| `k6/lib/gqlws.js` | Shared helpers: REST auth, `pushNote`, and the graphql-ws subscription client lifecycle. Defines the custom metrics. |
+
+### Reference results (local, single dev machine)
+
+| Clients | Checks | Events | Errors | push→event p95 | ws upgrade p95 |
+|--------:|:------:|:------:|:------:|---------------:|---------------:|
+| 1       | 7/7    | 1      | 0      | ~17 ms         | <1 ms          |
+| 50      | 251/251| 50     | 0      | ~38 ms         | ~31 ms         |
+| 200     | 1001/1001| 200  | 0      | ~63 ms         | ~83 ms         |
 
 ### Custom metrics emitted
 
@@ -75,9 +90,10 @@ A run passes when every `threshold` holds (shown with ✓/✗ in the summary).
 
 ## Roadmap (next tests to add)
 
-1. **Connection ramp** — ramp to N concurrent idle subscriptions; find where
-   upgrades start failing or memory climbs (the in-process `SyncBroker` is the
-   suspect ceiling — see `apps/api/src/sync/sync.broker.ts`).
+1. **Connection ramp** — `n-sockets.js` covers a fixed concurrent N; extend it
+   with a ramping executor to find where upgrades start failing or memory climbs
+   (the in-process `SyncBroker` is the suspect ceiling — see
+   `apps/api/src/sync/sync.broker.ts`).
 2. **Push throughput** — fixed pool of subscribers, increasing `pushNote` rate;
    measure end-to-end fan-out latency (`gqlws_event_time` under load).
 3. **Conflict storm** — many clients pushing against the same note with stale
