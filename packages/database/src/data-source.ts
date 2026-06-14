@@ -3,6 +3,8 @@ import { DataSource, DataSourceOptions } from 'typeorm'
 import { UserEntity } from './entities/user.entity'
 import { NoteEntity } from './entities/note.entity'
 import { NoteRevisionEntity } from './entities/note-revision.entity'
+import { ContactEntity } from './entities/contact.entity'
+import { ContactRevisionEntity } from './entities/contact-revision.entity'
 
 export function createDataSource(overrides: Partial<DataSourceOptions> = {}): DataSource {
   return new DataSource({
@@ -12,7 +14,7 @@ export function createDataSource(overrides: Partial<DataSourceOptions> = {}): Da
     username: process.env.DATABASE_USER ?? 'gammaray',
     password: process.env.DATABASE_PASSWORD ?? 'gammaray',
     database: process.env.DATABASE_NAME ?? 'gammaray',
-    entities: [UserEntity, NoteEntity, NoteRevisionEntity],
+    entities: [UserEntity, NoteEntity, NoteRevisionEntity, ContactEntity, ContactRevisionEntity],
     migrations: [__dirname + '/migrations/*.{ts,js}'],
     // Never enable synchronize — use migrations only
     synchronize: false,

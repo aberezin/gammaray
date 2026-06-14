@@ -5,6 +5,7 @@ import { DatabaseModule } from './database/database.module'
 import { AuthModule } from './auth/auth.module'
 import { UsersModule } from './users/users.module'
 import { NotesModule } from './notes/notes.module'
+import { ContactsModule } from './contacts/contacts.module'
 import { SyncModule } from './sync/sync.module'
 
 @Module({
@@ -46,6 +47,7 @@ import { SyncModule } from './sync/sync.module'
     AuthModule,
     UsersModule,
     NotesModule,
+    ContactsModule,
     SyncModule,
   ],
 })

@@ -1,0 +1,21 @@
+import { FieldKind, MergeStrategyKind, TableDescriptor } from './descriptors'
+
+// The first concrete type-A table: a flat contact row, no foreign keys, shared
+// across all authenticated clients. Drives schema-driven rendering on the client
+// and declares the (currently dormant) merge strategy.
+export const contactDescriptor: TableDescriptor = {
+  table: 'contact',
+  collection: 'contact',
+  identity: { field: 'id', clientGenerated: true },
+  mergeStrategy: MergeStrategyKind.WholeRow, // dormant until UPDATE
+  display: { titleFields: ['firstName', 'lastName'] },
+  fields: [
+    { name: 'id', label: 'ID', kind: FieldKind.Uuid, readOnly: true },
+    { name: 'firstName', label: 'First name', kind: FieldKind.String, required: true },
+    { name: 'lastName', label: 'Last name', kind: FieldKind.String, required: true },
+    { name: 'email', label: 'Email', kind: FieldKind.Email },
+    { name: 'phone', label: 'Phone', kind: FieldKind.Phone },
+    { name: 'version', label: 'Version', kind: FieldKind.Int, readOnly: true },
+    { name: 'updatedAt', label: 'Updated', kind: FieldKind.Timestamp, readOnly: true },
+  ],
+}

@@ -43,6 +43,16 @@
 
 4. **Last Write Wins**
 
+## Architecture Decision Records (ADRs)
+
+Significant, durable design decisions are recorded as ADRs in
+[`docs/adr/`](./docs/adr/). This file remains the high-level decision log; ADRs
+hold the detailed argument for individual decisions.
+
+- [ADR 0001 — Concurrency token model for type-A rows](./docs/adr/0001-concurrency-token-model.md):
+  single row `version` + 3-way merge against the ancestor (not per-field vectors);
+  per-table merge strategy carries the policy.
+
 ## Performance & Capacity (load testing)
 
 The realtime path (REST auth → GraphQL mutations → graphql-ws subscriptions) is
@@ -62,6 +72,20 @@ Current findings (single dev machine — indicative, not SLAs):
 These numbers motivate the messaging-broker decision below: horizontal scaling
 of subscriptions requires replacing the in-process broker with a shared one
 (see `SyncBroker`'s swap-in interface).
+
+## Open: history retention / truncation
+
+**TODO — needs discussion.** Every accepted write appends a revision row
+(`note_revisions`, `contact_revisions`, and every future type-A table's revision
+log). In a real application, old history is rarely needed for long, so unbounded
+growth is both a storage and a performance concern (the per-push revision insert
+is already on the write hot path — see Performance & Capacity). We need an
+auto-truncation / retention strategy: e.g. keep the last N versions or T days,
+snapshot-and-compact, or archive to cold storage. Note retention likely belongs
+*per table*, alongside the merge strategy on the table descriptor
+(`packages/core/src/descriptors.ts`), since different data has different needs.
+Open question: how truncation interacts with 3-way merge, which relies on the
+common-ancestor revision still existing.
 
 ## Notes
 - Two separate frontend applications sharing a single backend
