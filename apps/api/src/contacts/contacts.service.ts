@@ -61,27 +61,9 @@ export class ContactsService {
             .getOne()
         : null
 
-      // Delete: soft-delete the row (tombstone). Version-aware conflict handling
-      // for delete-vs-edit is a follow-up; for now a delete fast-forwards.
-      if (input.deleted) {
-        if (!existing) return { conflict: false, contact: null }
-        const nextVersion = existing.version + 1
-        await contactRepo.update(existing.id, { deleted: true, version: nextVersion })
-        const deleted = { ...existing, deleted: true, version: nextVersion } as ContactEntity
-        await revRepo.save(
-          revRepo.create({
-            contactId: existing.id,
-            data: snapshot(deleted),
-            version: nextVersion,
-            clientId,
-            conflictStatus: ConflictStatus.None,
-          }),
-        )
-        return { conflict: false, contact: deleted }
-      }
-
-      // Create: brand-new row.
+      // Create: brand-new row (a delete of a non-existent row is a no-op).
       if (!existing) {
+        if (input.deleted) return { conflict: false, contact: null }
         const created = await contactRepo.save(
           contactRepo.create({
             id: input.id,
@@ -104,12 +86,13 @@ export class ContactsService {
         return { conflict: false, contact: created }
       }
 
-      // Update: WholeRow strategy — diverged version is a conflict.
+      // WholeRow strategy — any diverged version is a conflict, whether the push
+      // is an edit or a delete. (This is the delete-vs-edit conflict path too.)
       if (existing.version !== expectedVersion) {
         await revRepo.save(
           revRepo.create({
             contactId: existing.id,
-            data: { ...incoming(input), version: existing.version },
+            data: { ...incoming(input), deleted: input.deleted, version: existing.version },
             version: existing.version,
             clientId,
             conflictStatus: ConflictStatus.Detected,
@@ -123,8 +106,23 @@ export class ContactsService {
         }
       }
 
-      // Fast-forward.
+      // Fast-forward: apply the delete or the edit.
       const nextVersion = existing.version + 1
+      if (input.deleted) {
+        await contactRepo.update(existing.id, { deleted: true, version: nextVersion })
+        const deleted = { ...existing, deleted: true, version: nextVersion } as ContactEntity
+        await revRepo.save(
+          revRepo.create({
+            contactId: existing.id,
+            data: snapshot(deleted),
+            version: nextVersion,
+            clientId,
+            conflictStatus: ConflictStatus.None,
+          }),
+        )
+        return { conflict: false, contact: deleted }
+      }
+
       await contactRepo.update(existing.id, {
         firstName: input.firstName,
         lastName: input.lastName,
@@ -161,14 +159,21 @@ export class ContactsService {
         .getOneOrFail()
 
       const nextVersion = existing.version + 1
+      // The chosen side may be a deletion (accept) or not (resurrect).
       await contactRepo.update(existing.id, {
         firstName: input.firstName,
         lastName: input.lastName,
         email: input.email,
         phone: input.phone,
+        deleted: input.deleted,
         version: nextVersion,
       })
-      const resolved = { ...existing, ...incoming(input), version: nextVersion } as ContactEntity
+      const resolved = {
+        ...existing,
+        ...incoming(input),
+        deleted: input.deleted,
+        version: nextVersion,
+      } as ContactEntity
 
       await revRepo.save(
         revRepo.create({

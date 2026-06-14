@@ -115,17 +115,19 @@ export function startContactReplication(
 
         if (result.conflict && result.serverData != null) {
           const serverData = JSON.parse(result.serverData) as Record<string, unknown>
-          // Capture the client's attempted row before RxDB overwrites the local
-          // doc with the server state below.
+          // Capture the client's attempted row (incl. its delete flag) before
+          // RxDB overwrites the local doc with the server state below.
           onConflict?.({
             contactId: input.id,
             serverVersion: result.serverVersion ?? 0,
             serverData,
             clientData: input,
           })
-          // Reconcile the local doc to the server state so it isn't stuck; the
-          // user's edit is held in the conflict UI for resolution.
-          return [{ ...doc, ...serverData, _deleted: false }]
+          // Reconcile the local doc to the server state so it isn't stuck — which
+          // may itself be a tombstone (the other client deleted the row). The
+          // user's attempt is held in the conflict UI for resolution.
+          const { deleted: srvDeleted, ...srvRest } = serverData
+          return [{ ...doc, ...srvRest, _deleted: srvDeleted === true }]
         }
 
         // Success: return the server row so RxDB reconciles the local version.
