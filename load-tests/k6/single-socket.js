@@ -9,6 +9,8 @@
 //
 // Run:  k6 run load-tests/k6/single-socket.js
 //       API_URL=http://localhost:3001 WS_URL=ws://localhost:3001 k6 run ...
+//
+// Reading the results & design rationale: load-tests/README.md.
 
 import { check } from 'k6'
 import { register, runSubscriptionClient } from './lib/gqlws.js'

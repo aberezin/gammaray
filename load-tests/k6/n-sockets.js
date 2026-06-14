@@ -11,6 +11,8 @@
 // Run:  k6 run load-tests/k6/n-sockets.js                 # default 50 clients
 //       CLIENTS=200 k6 run load-tests/k6/n-sockets.js     # scale up
 //       CLIENTS=500 MAX_DURATION=5m k6 run load-tests/k6/n-sockets.js
+//
+// Reading the results & design rationale: load-tests/README.md.
 
 import { check } from 'k6'
 import { register, runSubscriptionClient } from './lib/gqlws.js'

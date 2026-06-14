@@ -27,6 +27,8 @@
 //   RAMP_UP/HOLD/RAMP_DOWN  stage durations              (30s / 30s / 10s)
 //   CLIENT_DURATION_MS  how long each client loops       (default 20000)
 //   USERS             registered user pool               (default PEAK)
+//
+// Reading the results & design rationale: load-tests/README.md.
 
 import { check } from 'k6'
 import { register, runPushLoopClient } from './lib/gqlws.js'

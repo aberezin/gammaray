@@ -83,47 +83,71 @@ A run passes when every `threshold` holds (shown with ✓/✗ in the summary).
 | `k6/push-throughput.js` | Each client holds a subscription and drives a push→event round-trip loop on its **own** note (conflict-free); ramps the number of clients to ramp aggregate push rate. Measures sustained throughput and end-to-end fan-out latency, and confirms zero conflicts. Scale with `PEAK`. |
 | `k6/lib/gqlws.js` | Shared helpers: REST auth, `pushNote`, `getNoteVersion`, the graphql-ws subscription client lifecycle, the idle connection-hold (ramp test), and the push→event loop (throughput test). Defines the custom metrics. |
 
-### Reference results (local, single dev machine)
+### Reference results
 
-`n-sockets.js` (connect → push → disconnect):
+Headline findings on a single dev machine (M3 Max, all components on one box):
 
-| Clients | Checks | Events | Errors | push→event p95 | ws upgrade p95 |
-|--------:|:------:|:------:|:------:|---------------:|---------------:|
-| 1       | 7/7    | 1      | 0      | ~17 ms         | <1 ms          |
-| 50      | 251/251| 50     | 0      | ~38 ms         | ~31 ms         |
-| 200     | 1001/1001| 200  | 0      | ~63 ms         | ~83 ms         |
+- **Connections:** 500 concurrent held subscriptions with sub-millisecond ack —
+  no ceiling found in range.
+- **Throughput:** saturates ~100 concurrent writers / **~1,750 push/s**, then
+  throughput falls and latency rises while correctness holds (zero conflicts).
+  Bottleneck is the per-push locked DB transaction + revision insert.
 
-`connection-ramp.js` (concurrent held subscriptions):
+Full numbers, with the commit/machine/runtime each was measured on, live in
+[`RESULTS.md`](./RESULTS.md). Treat them as **relative** observations for
+spotting regressions, not as SLAs — a real deployment (separate API hosts,
+managed Postgres, Redis broker) will differ.
 
-| Peak concurrent | Checks | Errors | ack p95 | ws upgrade p95 |
-|----------------:|:------:|:------:|--------:|---------------:|
-| 200             | 1399/1399 | 0   | ~1 ms   | ~1.8 ms        |
-| 500             | 3997/3997 | 0   | ~1 ms   | ~0.9 ms        |
+## How to read a run
 
-No ceiling reached at 500 concurrent on a single dev machine — latencies stay
-sub-millisecond. Push higher (`MAX=1000+`) to find the real limit.
+k6 prints a summary at the end; a run **passes** only if every `threshold` holds
+(✓), and exits non-zero if any fails (✗) — that is the CI gate.
 
-`push-throughput.js` (sustained push→event round-trips, conflict-free):
+What a healthy run looks like:
 
-| Clients | Throughput   | push→event p95 | conflicts | errors |
-|--------:|-------------:|---------------:|:---------:|:------:|
-| 10      | ~1,890 ev/s  | ~4 ms          | 0         | 0      |
-| 100     | ~1,750 ev/s  | ~44 ms         | 0         | 0      |
-| 300     | ~1,127 ev/s  | ~146 ms        | 0         | 0      |
+- `checks` rate is `100.00%` — every connect/ack/event assertion held.
+- `gqlws_session_errors` is `0` — no auth/protocol failures.
+- `gqlws_push_conflicts` is `0` in the throughput test — pushes were clean.
+- Latency Trends (`gqlws_event_time`, `gqlws_ack_time`, `ws_connecting`) are
+  within their thresholds; watch the **p95**, not the average.
 
-Throughput saturates around ~100 concurrent writers (~1,750 push/s) on this dev
-box — beyond that, throughput falls and latency rises while correctness holds
-(zero conflicts/errors). The bottleneck is the per-push locked DB transaction
-plus revision insert; the API, k6, and Postgres all share one machine here.
+The custom metrics (all defined in `lib/gqlws.js`):
 
-### Custom metrics emitted
+| Metric | Meaning |
+|--------|---------|
+| `gqlws_ack_time` | `connection_init` → `connection_ack` (auth + handshake) |
+| `gqlws_event_time` | `pushNote` issued → its event arrives on the socket (end-to-end fan-out) |
+| `gqlws_events_received` | events delivered; the per-second rate == achieved throughput |
+| `gqlws_session_errors` | auth/protocol errors — **must be 0** |
+| `gqlws_connections_opened` / `_closed` | connection lifecycle counts |
+| `gqlws_push_conflicts` | `pushNote` calls that returned a conflict (0 in the throughput test) |
 
-- `gqlws_ack_time` — time from `connection_init` to `connection_ack`
-- `gqlws_event_time` — time from `pushNote` to the event arriving on the socket
-- `gqlws_events_received` — count of subscription events delivered (rate == throughput)
-- `gqlws_session_errors` — protocol/auth errors (threshold: must be 0)
-- `gqlws_connections_opened` / `gqlws_connections_closed` — connection lifecycle counts
-- `gqlws_push_conflicts` — `pushNote` calls that returned a conflict (0 in the throughput test)
+When a threshold fails, read it as a signal, not just a red mark:
+
+- `ws_connecting` / `gqlws_ack_time` p95 climbing → connection-accept capacity
+  (the in-process `SyncBroker`, event-loop saturation).
+- `gqlws_event_time` p95 climbing → fan-out/delivery latency under write load.
+- `gqlws_session_errors > 0` → real failures; check the API log, don't just
+  raise the threshold.
+- `gqlws_push_conflicts > 0` in the throughput test → the single-writer-per-note
+  invariant broke (e.g. two clients sharing a user); a bug, not load.
+
+## Design decisions & gotchas
+
+Why the tests are shaped the way they are — the things a future change is likely
+to get wrong without context.
+
+| Decision | Why | Alternative rejected |
+|----------|-----|----------------------|
+| k6 as the framework | Best load generation + first-class thresholds/metrics; single binary for CI | Artillery (Node-native, could reuse the real `graphql-ws` client) — kept as documented fallback |
+| One shared `lib/gqlws.js`, thin test files | Each test varies only its executor/scenario; the graphql-ws handshake is identical and easy to get wrong | Duplicating the handshake per file (drifts, double-maintenance) |
+| `push-throughput` ramps **clients**, not one client's rate | The API uses per-note optimistic concurrency, so a note tolerates ~1 in-flight write; real throughput scales with distinct notes (clients) | Driving one client faster — would just produce conflicts, conflating with the conflict-storm test |
+| Throughput client pushes its **own** note, seeded via `getNoteVersion` | Keeps writes conflict-free so the test measures throughput, not contention; seeding `expectedVersion` avoids a spurious first-push conflict | Pushing a shared note (conflicts dominate) or starting at version 0 (first push always conflicts) |
+| End-to-end latency via a timestamp embedded in pushed content | The same client times its own round-trip; no cross-VU coordination needed (k6 VUs can't share state) | Separate pusher/subscriber VUs (correlating push→event across VUs is hard and racy) |
+| `connection-ramp` reuses a bounded user pool (`USERS`) | The test targets connection count; one bcrypt-hashed registration per socket blows past k6's setup timeout at scale, and the broker registers a subscription per *connection* regardless of user | One user per connection (use `n-sockets.js` when strict per-user isolation matters) |
+| Loop driven by **direct calls**, not `socket.setTimeout(fn, 0)` | k6's ws `setTimeout(fn, 0)` did not fire — the push loop silently ran once per iteration; positive delays (e.g. close timers) do work | `setTimeout(0)` rescheduling (looked correct, silently broke the loop) |
+| Idle sockets in `connection-ramp` close themselves before ramp-down | A clean self-close records checks and isn't miscounted as an error; forced teardown at test end is noise | Holding sockets open for the whole test (teardown errors + no recorded checks) |
+| Only protocol-level failures count as `gqlws_session_errors` | Transport `error` events fire during normal teardown; counting them would make `count==0` flaky. Real connection failures still surface via the `ws upgrade (101)` check | Counting every socket `error` event (false positives at shutdown) |
 
 ## Roadmap (next tests to add)
 

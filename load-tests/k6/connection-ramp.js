@@ -25,6 +25,8 @@
 // bounded pool of users and lets connections share tokens (each socket still
 // opens its own broker subscription). Use n-sockets.js when you need strictly
 // one user per client.
+//
+// Reading the results & design rationale: load-tests/README.md.
 
 import { check } from 'k6'
 import { register, holdSubscriptionOpen } from './lib/gqlws.js'

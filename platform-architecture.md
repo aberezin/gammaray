@@ -43,8 +43,29 @@
 
 4. **Last Write Wins**
 
+## Performance & Capacity (load testing)
+
+The realtime path (REST auth → GraphQL mutations → graphql-ws subscriptions) is
+load-tested with k6. Tests, how to run them, the design rationale, and a dated
+results log live in [`load-tests/`](./load-tests/) (`load-tests/README.md`,
+`load-tests/RESULTS.md`).
+
+Current findings (single dev machine — indicative, not SLAs):
+- **Connections:** 500 concurrent held subscriptions with sub-millisecond ack;
+  no ceiling found in range. The in-process `SyncBroker`
+  (`apps/api/src/sync/sync.broker.ts`) is the suspected ultimate limit — the
+  connection-ramp test is how we'll find it as we scale out.
+- **Write throughput:** saturates ~100 concurrent writers / ~1,750 push/s, then
+  throughput drops and latency rises (correctness holds). Bottleneck is the
+  per-push locked DB transaction + revision insert.
+
+These numbers motivate the messaging-broker decision below: horizontal scaling
+of subscriptions requires replacing the in-process broker with a shared one
+(see `SyncBroker`'s swap-in interface).
+
 ## Notes
 - Two separate frontend applications sharing a single backend
 - Apps communicate through the backend only
-- Future decision needed: Redis vs RabbitMQ for messaging
+- Future decision needed: Redis vs RabbitMQ for messaging — validate the choice
+  by re-running `load-tests/k6/connection-ramp.js` against a multi-instance API
 - Chose TypeORM over Prisma due to complex data model requirements
