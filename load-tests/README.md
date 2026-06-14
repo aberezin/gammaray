@@ -62,6 +62,10 @@ CLIENTS=500 MAX_DURATION=5m k6 run load-tests/k6/n-sockets.js
 k6 run load-tests/k6/connection-ramp.js                       # ramp to 200
 MAX=500 RAMP_UP=30s HOLD=20s k6 run load-tests/k6/connection-ramp.js
 
+# Test #4 — push throughput: ramp push rate, measure fan-out latency
+k6 run load-tests/k6/push-throughput.js                       # ramp to 100 clients
+PEAK=300 RAMP_UP=30s HOLD=30s k6 run load-tests/k6/push-throughput.js
+
 # Point at a non-default host
 API_URL=http://localhost:3001 WS_URL=ws://localhost:3001 \
   k6 run load-tests/k6/single-socket.js
@@ -76,7 +80,8 @@ A run passes when every `threshold` holds (shown with ✓/✗ in the summary).
 | `k6/single-socket.js` | One graphql-ws connection: auth → subscribe → push → receive event. Verifies the realtime pipe and records ack/event latency. |
 | `k6/n-sockets.js` | N independent clients (own user/JWT/note/socket) connecting concurrently, each running the full lifecycle. Tests connection capacity and per-user fan-out isolation (each socket must receive only its own event). Scale with `CLIENTS`. |
 | `k6/connection-ramp.js` | Ramps to `MAX` **concurrent open** subscriptions and holds the plateau (idle sockets), to find where realtime capacity degrades. This is the test that stresses the in-process `SyncBroker`'s per-connection overhead. Watch the live `vus` line for concurrency. |
-| `k6/lib/gqlws.js` | Shared helpers: REST auth, `pushNote`, the graphql-ws subscription client lifecycle, and the idle connection-hold used by the ramp test. Defines the custom metrics. |
+| `k6/push-throughput.js` | Each client holds a subscription and drives a push→event round-trip loop on its **own** note (conflict-free); ramps the number of clients to ramp aggregate push rate. Measures sustained throughput and end-to-end fan-out latency, and confirms zero conflicts. Scale with `PEAK`. |
+| `k6/lib/gqlws.js` | Shared helpers: REST auth, `pushNote`, `getNoteVersion`, the graphql-ws subscription client lifecycle, the idle connection-hold (ramp test), and the push→event loop (throughput test). Defines the custom metrics. |
 
 ### Reference results (local, single dev machine)
 
@@ -98,20 +103,36 @@ A run passes when every `threshold` holds (shown with ✓/✗ in the summary).
 No ceiling reached at 500 concurrent on a single dev machine — latencies stay
 sub-millisecond. Push higher (`MAX=1000+`) to find the real limit.
 
+`push-throughput.js` (sustained push→event round-trips, conflict-free):
+
+| Clients | Throughput   | push→event p95 | conflicts | errors |
+|--------:|-------------:|---------------:|:---------:|:------:|
+| 10      | ~1,890 ev/s  | ~4 ms          | 0         | 0      |
+| 100     | ~1,750 ev/s  | ~44 ms         | 0         | 0      |
+| 300     | ~1,127 ev/s  | ~146 ms        | 0         | 0      |
+
+Throughput saturates around ~100 concurrent writers (~1,750 push/s) on this dev
+box — beyond that, throughput falls and latency rises while correctness holds
+(zero conflicts/errors). The bottleneck is the per-push locked DB transaction
+plus revision insert; the API, k6, and Postgres all share one machine here.
+
 ### Custom metrics emitted
 
 - `gqlws_ack_time` — time from `connection_init` to `connection_ack`
 - `gqlws_event_time` — time from `pushNote` to the event arriving on the socket
-- `gqlws_events_received` — count of subscription events delivered
+- `gqlws_events_received` — count of subscription events delivered (rate == throughput)
 - `gqlws_session_errors` — protocol/auth errors (threshold: must be 0)
+- `gqlws_connections_opened` / `gqlws_connections_closed` — connection lifecycle counts
+- `gqlws_push_conflicts` — `pushNote` calls that returned a conflict (0 in the throughput test)
 
 ## Roadmap (next tests to add)
 
 1. ~~**Connection ramp**~~ — done (`connection-ramp.js`). No ceiling at 500 on a
    dev box; rerun with `MAX=1000+` (and on prod-like hardware) to find the real
    `SyncBroker` limit (see `apps/api/src/sync/sync.broker.ts`).
-2. **Push throughput** — fixed pool of subscribers, increasing `pushNote` rate;
-   measure end-to-end fan-out latency (`gqlws_event_time` under load).
+2. ~~**Push throughput**~~ — done (`push-throughput.js`). Saturates ~1,750
+   push/s / ~100 concurrent writers on a dev box; bottleneck is the per-push DB
+   transaction. Conflict-free by design (one writer per note).
 3. **Conflict storm** — many clients pushing against the same note with stale
    `expectedVersion`; measure conflict rate and resolution latency.
 4. **Soak** — steady moderate load for 30–60 min; watch for leaks / drift.
