@@ -43,6 +43,16 @@
 
 4. **Last Write Wins**
 
+## Architecture Decision Records (ADRs)
+
+Significant, durable design decisions are recorded as ADRs in
+[`docs/adr/`](./docs/adr/). This file remains the high-level decision log; ADRs
+hold the detailed argument for individual decisions.
+
+- [ADR 0001 — Concurrency token model for type-A rows](./docs/adr/0001-concurrency-token-model.md):
+  single row `version` + 3-way merge against the ancestor (not per-field vectors);
+  per-table merge strategy carries the policy.
+
 ## Performance & Capacity (load testing)
 
 The realtime path (REST auth → GraphQL mutations → graphql-ws subscriptions) is
