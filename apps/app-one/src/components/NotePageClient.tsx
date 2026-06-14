@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { signOut } from 'next-auth/react'
 import { NoteEditor, RevisionList, ConflictBanner, OfflineToggle, SyncIndicator } from '@gammaray/ui'
 import { SyncStatus } from '@gammaray/core'
@@ -242,6 +243,7 @@ export function NotePageClient({ accessToken }: Props) {
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ margin: 0, fontSize: 20 }}>NoteSync</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Link href="/contacts" style={{ fontSize: 13, color: '#3b82f6' }}>Contacts →</Link>
           <OfflineToggle offline={offline} onToggle={handleToggleOffline} />
           <SyncIndicator status={syncStatus} />
           <button

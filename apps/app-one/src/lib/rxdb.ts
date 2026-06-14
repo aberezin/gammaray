@@ -1,22 +1,25 @@
-import { createRxDatabase, addRxPlugin, RxDatabase } from 'rxdb'
+import { createRxDatabase, addRxPlugin, RxDatabase, RxCollection } from 'rxdb'
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode'
-import type { NoteRxDocument } from '@gammaray/core'
+import type { NoteRxDocument, RowRecord } from '@gammaray/core'
+import { contactDescriptor } from '@gammaray/core'
+import { rxSchemaFromDescriptor } from './rx-schema'
 
 if (process.env.NODE_ENV === 'development') {
   addRxPlugin(RxDBDevModePlugin)
 }
 
-export type NoteCollection = {
-  note: import('rxdb').RxCollection<NoteRxDocument>
+export type AppCollections = {
+  note: RxCollection<NoteRxDocument>
+  contact: RxCollection<RowRecord>
 }
-export type NoteDatabase = RxDatabase<NoteCollection>
+export type AppDatabase = RxDatabase<AppCollections>
 
-let dbPromise: Promise<NoteDatabase> | null = null
+let dbPromise: Promise<AppDatabase> | null = null
 
-export async function getDatabase(): Promise<NoteDatabase> {
+export async function getDatabase(): Promise<AppDatabase> {
   if (dbPromise) return dbPromise
-  dbPromise = createRxDatabase<NoteCollection>({
+  dbPromise = createRxDatabase<AppCollections>({
     name: 'notesync',
     storage: getRxStorageDexie(),
   }).then(async (db) => {
@@ -35,6 +38,11 @@ export async function getDatabase(): Promise<NoteDatabase> {
           },
           required: ['id', 'content', 'version', 'updatedAt'],
         },
+      },
+      // The contact collection's schema is generated from its descriptor — the
+      // first type-A table to ride the schema-driven path end to end.
+      contact: {
+        schema: rxSchemaFromDescriptor(contactDescriptor),
       },
     })
     return db
