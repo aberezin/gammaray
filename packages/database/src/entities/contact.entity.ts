@@ -31,6 +31,10 @@ export class ContactEntity {
   @Column({ type: 'int', default: 0 })
   version!: number
 
+  /** Soft-delete tombstone; retained so deletions replicate and history survives. */
+  @Column({ type: 'boolean', default: false })
+  deleted!: boolean
+
   /** Escape hatch for schema evolution — promote fields to columns when stable */
   @Column({ type: 'jsonb', default: '{}' })
   metadata!: Record<string, unknown>

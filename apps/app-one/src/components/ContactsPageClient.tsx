@@ -129,6 +129,16 @@ export function ContactsPageClient({ accessToken }: Props) {
     setEditing(false)
   }
 
+  // Soft-delete via RxDB (sets _deleted); replication pushes the tombstone.
+  async function handleDelete() {
+    if (!selectedId) return
+    const db = await getDatabase()
+    const doc = await db.contact.findOne(selectedId).exec()
+    if (doc) await doc.remove()
+    setEditing(false)
+    setSelectedId(null)
+  }
+
   // Mint the client-side UUID and insert locally; replication pushes it to the
   // server (offline-first create). The new row then appears via the live query.
   async function handleSave() {
@@ -230,12 +240,20 @@ export function ContactsPageClient({ accessToken }: Props) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 12px' }}>
                 <h2 style={{ margin: 0, fontSize: 15, color: '#374151' }}>Record</h2>
                 {!editing && (
-                  <button
-                    onClick={startEdit}
-                    style={{ fontSize: 13, padding: '4px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
-                  >
-                    Edit
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={startEdit}
+                      style={{ fontSize: 13, padding: '4px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => void handleDelete()}
+                      style={{ fontSize: 13, padding: '4px 12px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 )}
               </div>
 

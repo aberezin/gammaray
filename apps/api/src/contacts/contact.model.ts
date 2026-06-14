@@ -1,5 +1,5 @@
 import { ObjectType, InputType, Field, ID, Int } from '@nestjs/graphql'
-import { IsString, IsUUID } from 'class-validator'
+import { IsBoolean, IsString, IsUUID } from 'class-validator'
 
 @InputType()
 export class ContactInput {
@@ -24,6 +24,11 @@ export class ContactInput {
   @Field()
   @IsString()
   phone!: string
+
+  /** A delete push sets this; create/update leave it false. */
+  @Field(() => Boolean, { defaultValue: false })
+  @IsBoolean()
+  deleted!: boolean
 }
 
 @ObjectType()
@@ -62,6 +67,9 @@ export class ContactModel {
 
   @Field(() => Int)
   version!: number
+
+  @Field()
+  deleted!: boolean
 
   @Field()
   createdAt!: string

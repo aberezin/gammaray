@@ -8,7 +8,9 @@ import { contactDescriptor, type RowRecord } from '@gammaray/core'
 // a live pull stream come in later increments. The pull query's field list is
 // derived from the descriptor — schema-driven.
 const PULL_FIELDS = contactDescriptor.fields.map((f) => f.name).join(' ')
-const PULL_CONTACTS = `query { contacts { ${PULL_FIELDS} } }`
+// `deleted` is a system tombstone field (not in the descriptor); pull it so
+// deletions propagate, then map it onto RxDB's native `_deleted`.
+const PULL_CONTACTS = `query { contacts { ${PULL_FIELDS} deleted } }`
 
 const PUSH_CONTACT = `
   mutation PushContact($input: ContactInput!, $expectedVersion: Int!, $clientId: String!) {
@@ -69,8 +71,13 @@ export function startContactReplication(
     pull: {
       batchSize: 1000,
       async handler() {
-        const data = await gqlClient.request<{ contacts: RowRecord[] }>(PULL_CONTACTS)
-        const documents = (data.contacts ?? []).map((c) => ({ ...c, _deleted: false }))
+        const data = await gqlClient.request<{ contacts: Array<RowRecord & { deleted?: boolean }> }>(
+          PULL_CONTACTS,
+        )
+        const documents = (data.contacts ?? []).map((c) => {
+          const { deleted, ...rest } = c
+          return { ...rest, _deleted: !!deleted }
+        })
         // Fewer docs than batchSize tells RxDB the pull is complete.
         return { documents, checkpoint: { pulledAt: new Date().toISOString() } }
       },
@@ -92,6 +99,7 @@ export function startContactReplication(
           lastName: String(doc.lastName ?? ''),
           email: String(doc.email ?? ''),
           phone: String(doc.phone ?? ''),
+          deleted: doc._deleted === true,
         }
 
         const data = await gqlClient.request<PushContactResult>(PUSH_CONTACT, {
@@ -100,6 +108,10 @@ export function startContactReplication(
           clientId,
         })
         const result = data.pushContact
+
+        // Delete: the server soft-deleted the row; keep the local tombstone.
+        // (Delete-vs-edit conflict handling is a follow-up.)
+        if (input.deleted) return []
 
         if (result.conflict && result.serverData != null) {
           const serverData = JSON.parse(result.serverData) as Record<string, unknown>

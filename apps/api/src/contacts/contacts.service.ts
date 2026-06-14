@@ -61,6 +61,25 @@ export class ContactsService {
             .getOne()
         : null
 
+      // Delete: soft-delete the row (tombstone). Version-aware conflict handling
+      // for delete-vs-edit is a follow-up; for now a delete fast-forwards.
+      if (input.deleted) {
+        if (!existing) return { conflict: false, contact: null }
+        const nextVersion = existing.version + 1
+        await contactRepo.update(existing.id, { deleted: true, version: nextVersion })
+        const deleted = { ...existing, deleted: true, version: nextVersion } as ContactEntity
+        await revRepo.save(
+          revRepo.create({
+            contactId: existing.id,
+            data: snapshot(deleted),
+            version: nextVersion,
+            clientId,
+            conflictStatus: ConflictStatus.None,
+          }),
+        )
+        return { conflict: false, contact: deleted }
+      }
+
       // Create: brand-new row.
       if (!existing) {
         const created = await contactRepo.save(
@@ -190,5 +209,6 @@ function snapshot(c: ContactEntity): Record<string, unknown> {
     email: c.email,
     phone: c.phone,
     version: c.version,
+    deleted: c.deleted,
   }
 }
