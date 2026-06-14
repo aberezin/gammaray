@@ -1,6 +1,12 @@
 import { Module, Global } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
-import { UserEntity, NoteEntity, NoteRevisionEntity } from '@gammaray/database'
+import {
+  UserEntity,
+  NoteEntity,
+  NoteRevisionEntity,
+  ContactEntity,
+  ContactRevisionEntity,
+} from '@gammaray/database'
 
 @Global()
 @Module({
@@ -13,7 +19,13 @@ import { UserEntity, NoteEntity, NoteRevisionEntity } from '@gammaray/database'
         username: process.env.DATABASE_USER ?? 'gammaray',
         password: process.env.DATABASE_PASSWORD ?? 'gammaray',
         database: process.env.DATABASE_NAME ?? 'gammaray',
-        entities: [UserEntity, NoteEntity, NoteRevisionEntity],
+        entities: [
+          UserEntity,
+          NoteEntity,
+          NoteRevisionEntity,
+          ContactEntity,
+          ContactRevisionEntity,
+        ],
         migrations: [],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
