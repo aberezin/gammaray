@@ -1,6 +1,6 @@
 import { Resolver, Query, Mutation, Subscription, Args, Int } from '@nestjs/graphql'
 import { UseGuards } from '@nestjs/common'
-import { NotesService } from './notes.service'
+import { NotesService, toNoteModel, toRevisionModel } from './notes.service'
 import { NoteModel, RevisionModel, ConflictResultModel } from './note.model'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
@@ -17,12 +17,13 @@ export class NotesResolver {
 
   @Query(() => NoteModel)
   async note(@CurrentUser() user: UserEntity): Promise<NoteModel> {
-    return this.notes.getOrCreateNote(user.id) as unknown as NoteModel
+    return toNoteModel(await this.notes.getOrCreateNote(user.id))
   }
 
   @Query(() => [RevisionModel])
   async revisions(@CurrentUser() user: UserEntity): Promise<RevisionModel[]> {
-    return this.notes.getRevisions(user.id) as unknown as RevisionModel[]
+    const revisions = await this.notes.getRevisions(user.id)
+    return revisions.map(toRevisionModel)
   }
 
   @Mutation(() => ConflictResultModel)

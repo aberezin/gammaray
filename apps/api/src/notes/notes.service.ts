@@ -163,7 +163,7 @@ export class NotesService {
   }
 }
 
-function toNoteModel(e: NoteEntity): NoteModel {
+export function toNoteModel(e: NoteEntity): NoteModel {
   const m = new NoteModel()
   m.id = e.id
   m.content = e.content
@@ -172,7 +172,7 @@ function toNoteModel(e: NoteEntity): NoteModel {
   return m
 }
 
-function toRevisionModel(e: NoteRevisionEntity): RevisionModel {
+export function toRevisionModel(e: NoteRevisionEntity): RevisionModel {
   const m = new RevisionModel()
   m.id = e.id
   m.noteId = e.noteId
