@@ -66,6 +66,10 @@ MAX=500 RAMP_UP=30s HOLD=20s k6 run load-tests/k6/connection-ramp.js
 k6 run load-tests/k6/push-throughput.js                       # ramp to 100 clients
 PEAK=300 RAMP_UP=30s HOLD=30s k6 run load-tests/k6/push-throughput.js
 
+# Test #5 — conflict storm: many writers fight over ONE note
+k6 run load-tests/k6/conflict-storm.js                        # ramp to 50 writers
+RESOLVE=false k6 run load-tests/k6/conflict-storm.js          # conflict-only, no resolve
+
 # Point at a non-default host
 API_URL=http://localhost:3001 WS_URL=ws://localhost:3001 \
   k6 run load-tests/k6/single-socket.js
@@ -81,7 +85,8 @@ A run passes when every `threshold` holds (shown with ✓/✗ in the summary).
 | `k6/n-sockets.js` | N independent clients (own user/JWT/note/socket) connecting concurrently, each running the full lifecycle. Tests connection capacity and per-user fan-out isolation (each socket must receive only its own event). Scale with `CLIENTS`. |
 | `k6/connection-ramp.js` | Ramps to `MAX` **concurrent open** subscriptions and holds the plateau (idle sockets), to find where realtime capacity degrades. This is the test that stresses the in-process `SyncBroker`'s per-connection overhead. Watch the live `vus` line for concurrency. |
 | `k6/push-throughput.js` | Each client holds a subscription and drives a push→event round-trip loop on its **own** note (conflict-free); ramps the number of clients to ramp aggregate push rate. Measures sustained throughput and end-to-end fan-out latency, and confirms zero conflicts. Scale with `PEAK`. |
-| `k6/lib/gqlws.js` | Shared helpers: REST auth, `pushNote`, `getNoteVersion`, the graphql-ws subscription client lifecycle, the idle connection-hold (ramp test), and the push→event loop (throughput test). Defines the custom metrics. |
+| `k6/conflict-storm.js` | The inverse of push-throughput: many writers (one shared user) hammer the **same** note so writes collide. Measures conflict rate and resolution latency under contention; correctness must hold (no errors, every resolve succeeds). HTTP-only. Scale with `PEAK`; `RESOLVE=false` for conflict-only. |
+| `k6/lib/gqlws.js` | Shared helpers: REST auth, `pushNote`, `getNote`/`getNoteVersion`, `resolveConflict`, the graphql-ws subscription client lifecycle, the idle connection-hold (ramp test), the push→event loop (throughput test), and the conflict-storm loop. Defines the custom metrics. |
 
 ### Reference results
 
@@ -92,6 +97,9 @@ Headline findings on a single dev machine (M3 Max, all components on one box):
 - **Throughput:** saturates ~100 concurrent writers / **~1,750 push/s**, then
   throughput falls and latency rises while correctness holds (zero conflicts).
   Bottleneck is the per-push locked DB transaction + revision insert.
+- **Contention:** 50 writers on one note → **~98% conflict rate**, resolve p95
+  ~142 ms, zero errors. Optimistic concurrency serializes cleanly under a storm;
+  it rejects (never corrupts) and resolution latency grows with contention.
 
 Full numbers, with the commit/machine/runtime each was measured on, live in
 [`RESULTS.md`](./RESULTS.md). Treat them as **relative** observations for
@@ -120,7 +128,9 @@ The custom metrics (all defined in `lib/gqlws.js`):
 | `gqlws_events_received` | events delivered; the per-second rate == achieved throughput |
 | `gqlws_session_errors` | auth/protocol errors — **must be 0** |
 | `gqlws_connections_opened` / `_closed` | connection lifecycle counts |
-| `gqlws_push_conflicts` | `pushNote` calls that returned a conflict (0 in the throughput test) |
+| `gqlws_push_conflicts` | `pushNote` calls that returned a conflict (0 in the throughput test; high in the conflict storm) |
+| `push_conflict_rate` | fraction of pushes that conflicted (conflict-storm headline) |
+| `conflict_resolve_time` | `resolveConflict` latency under contention |
 
 When a threshold fails, read it as a signal, not just a red mark:
 
@@ -148,6 +158,8 @@ to get wrong without context.
 | Loop driven by **direct calls**, not `socket.setTimeout(fn, 0)` | k6's ws `setTimeout(fn, 0)` did not fire — the push loop silently ran once per iteration; positive delays (e.g. close timers) do work | `setTimeout(0)` rescheduling (looked correct, silently broke the loop) |
 | Idle sockets in `connection-ramp` close themselves before ramp-down | A clean self-close records checks and isn't miscounted as an error; forced teardown at test end is noise | Holding sockets open for the whole test (teardown errors + no recorded checks) |
 | Only protocol-level failures count as `gqlws_session_errors` | Transport `error` events fire during normal teardown; counting them would make `count==0` flaky. Real connection failures still surface via the `ws upgrade (101)` check | Counting every socket `error` event (false positives at shutdown) |
+| `conflict-storm` shares ONE user/note across all writers, HTTP-only | One note per user is the contention point; all writers must hit the same note to collide. The storm lives in `pushNote`/`resolveConflict`, so no subscription is needed | Per-client notes (that's push-throughput — no contention) |
+| `conflict-storm` does not gate on `push_conflict_rate` | A high conflict rate is the expected outcome, not a failure; the gates are zero errors and bounded resolve latency | Thresholding the conflict rate (would fail on the very thing being measured) |
 
 ## Roadmap (next tests to add)
 
@@ -157,6 +169,7 @@ to get wrong without context.
 2. ~~**Push throughput**~~ — done (`push-throughput.js`). Saturates ~1,750
    push/s / ~100 concurrent writers on a dev box; bottleneck is the per-push DB
    transaction. Conflict-free by design (one writer per note).
-3. **Conflict storm** — many clients pushing against the same note with stale
-   `expectedVersion`; measure conflict rate and resolution latency.
+3. ~~**Conflict storm**~~ — done (`conflict-storm.js`). 50 writers on one note →
+   ~98% conflict rate, resolve p95 ~142 ms, zero errors; optimistic concurrency
+   serializes cleanly and never corrupts.
 4. **Soak** — steady moderate load for 30–60 min; watch for leaks / drift.

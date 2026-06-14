@@ -60,6 +60,26 @@ Bottleneck is the per-push locked DB transaction plus revision insert.
 
 ---
 
+## 2026-06-14 — conflict-storm test added
+
+**Environment:** same machine as the baseline above (Apple M3 Max, 16 cores,
+48 GB, macOS 15.7.7; API + k6 + Postgres on one box; k6 v1.7.1, Node v24.15.0,
+PostgreSQL 16.14; in-process `SyncBroker`). Branch `conflict-storm`.
+
+**conflict-storm.js** — many writers fight over ONE note, scaled by `PEAK`
+
+| Writers | Checks  | Conflict rate | resolve p95 | errors |
+|--------:|:-------:|:-------------:|------------:|:------:|
+| 10      | 30/30   | ~95.5%        | ~36 ms      | 0      |
+| 50      | 280/280 | ~97.9%        | ~142 ms     | 0      |
+
+Only ~one writer wins per version, so the conflict rate is high by design and
+rises with contention. `resolveConflict` is unconditional (row lock + version
+bump), so it serializes writers — resolution latency grows with writer count but
+nothing errors or corrupts. This is the intended inverse of push-throughput.
+
+---
+
 ## Run template (copy me)
 
 ```
