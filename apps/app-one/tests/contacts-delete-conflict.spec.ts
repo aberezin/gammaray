@@ -1,10 +1,10 @@
 import { test, expect, Browser } from '@playwright/test'
 import { register, uniqueEmail } from './helpers'
 
-// Type-A delete, part 2: delete-vs-edit conflict. One client deletes a row while
-// another edits it from a stale version. Per the design, this surfaces as a
-// WholeRow conflict (delete is just another versioned change); the user can
-// resurrect with their edit (keep mine) or accept the deletion (keep theirs).
+// Type-A delete, part 2: delete-vs-edit conflict. With live sync on, the
+// conflict is produced by editing OFFLINE: B edits while disconnected, A deletes
+// online, and B reconnects with a stale version → conflict. Per the design, B
+// can resurrect with its edit (keep mine) or accept the deletion (keep theirs).
 test.describe('Contacts (type-A delete/edit conflict)', () => {
   test('an edit racing a delete conflicts; resurrect keeps the edit', async ({ browser }: { browser: Browser }) => {
     const stamp = Date.now()
@@ -24,24 +24,26 @@ test.describe('Contacts (type-A delete/edit conflict)', () => {
     await a.getByRole('button', { name: 'Save' }).click()
     await expect(a.getByText(surname)).toBeVisible({ timeout: 8_000 })
 
-    // B loads it (stale v1) and selects it.
+    // B loads it (v1), selects it, and goes offline so it stays stale.
     const ctxB = await browser.newContext()
     const b = await ctxB.newPage()
     await register(b, uniqueEmail('dve-b'))
     await b.goto('/contacts')
     await expect(b.getByText(surname)).toBeVisible({ timeout: 10_000 })
     await b.getByText(surname).click()
+    await b.getByRole('button', { name: /Online/ }).click() // go offline
 
-    // A deletes it → server advances and tombstones the row.
+    // A deletes it online → server advances and tombstones the row.
     await a.getByText(surname).click()
     await a.getByRole('button', { name: 'Delete' }).click()
     await expect(a.getByText(surname)).not.toBeVisible({ timeout: 8_000 })
-    await a.waitForTimeout(1500) // let the delete push land server-side
+    await a.waitForTimeout(1500) // let the delete push commit before B reconnects
 
-    // B edits from its stale version → conflict; the server side shows deleted.
+    // B edits offline, then reconnects → conflict; the server side shows deleted.
     await b.getByRole('button', { name: 'Edit' }).click()
     await b.getByLabel('Email').fill(bEmail)
     await b.getByRole('button', { name: 'Save' }).click()
+    await b.getByRole('button', { name: /Offline/ }).click() // go online
     await expect(b.getByText('Update conflict')).toBeVisible({ timeout: 10_000 })
     await expect(b.getByText('(deleted)').first()).toBeVisible()
 
