@@ -7,7 +7,7 @@
 import ws from 'k6/ws'
 import http from 'k6/http'
 import { check } from 'k6'
-import { Counter, Trend } from 'k6/metrics'
+import { Counter, Trend, Rate } from 'k6/metrics'
 
 export const API_URL = __ENV.API_URL || 'http://localhost:3001'
 export const WS_URL = __ENV.WS_URL || 'ws://localhost:3001'
@@ -21,6 +21,8 @@ export const metrics = {
   connectionsOpened: new Counter('gqlws_connections_opened'), // reached connection_ack
   connectionsClosed: new Counter('gqlws_connections_closed'), // socket closed
   pushConflicts: new Counter('gqlws_push_conflicts'), // pushNote returned conflict
+  conflictRate: new Rate('push_conflict_rate'), // fraction of pushes that conflicted
+  resolveTime: new Trend('conflict_resolve_time', true), // resolveConflict latency
 }
 
 // Register a fresh user. `label` makes the email unique across clients/runs.
@@ -68,6 +70,39 @@ export function getNoteVersion(token) {
   } catch (_e) {
     return 0
   }
+}
+
+// The user's note id and current version (creates the note if needed). The
+// conflict-storm test needs the id to call resolveConflict.
+export function getNote(token) {
+  const res = http.post(
+    `${API_URL}/graphql`,
+    JSON.stringify({ query: `query { note { id version } }` }),
+    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } },
+  )
+  try {
+    const n = res.json('data.note')
+    return { id: n.id, version: typeof n.version === 'number' ? n.version : 0 }
+  } catch (_e) {
+    return { id: null, version: 0 }
+  }
+}
+
+// Resolve a detected conflict. resolveConflict is unconditional server-side
+// (row lock, version bump), so it serializes writers rather than rejecting them.
+export function resolveConflict(token, noteId, resolvedContent, clientId) {
+  const query = `
+    mutation ResolveConflict($noteId: String!, $resolvedContent: String!, $clientId: String!) {
+      resolveConflict(noteId: $noteId, resolvedContent: $resolvedContent, clientId: $clientId) {
+        id
+        version
+      }
+    }`
+  return http.post(
+    `${API_URL}/graphql`,
+    JSON.stringify({ query, variables: { noteId, resolvedContent, clientId } }),
+    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } },
+  )
 }
 
 // Run one full subscription client on a single socket:
@@ -351,5 +386,69 @@ export function runPushLoopClient({ token, clientId, durationMs = 20000 }) {
   )
 
   result.wsStatus = res && res.status
+  return result
+}
+
+// Hammer ONE shared note for `durationMs` to deliberately produce write
+// conflicts (the inverse of runPushLoopClient). The client pushes with its
+// locally-tracked version; when another writer got there first the server
+// returns a conflict, which the client (optionally) resolves via resolveConflict
+// before continuing. HTTP-only — the contention lives in pushNote/resolveConflict,
+// so no subscription is opened. Records conflict rate and resolution latency.
+//
+// Returns { pushes, successes, conflicts, resolves }.
+export function runConflictStormClient({ token, noteId, clientId, durationMs = 15000, resolve = true }) {
+  const result = { pushes: 0, successes: 0, conflicts: 0, resolves: 0 }
+  let version = getNoteVersion(token)
+  const startWall = Date.now()
+
+  while (Date.now() - startWall < durationMs) {
+    const content = `storm ${clientId} @${Date.now()}`
+    const r = pushNote(token, content, version, clientId)
+    result.pushes++
+
+    let pn
+    try {
+      pn = r.json('data.pushNote')
+    } catch (_e) {
+      metrics.sessionErrors.add(1)
+      continue
+    }
+    if (!pn) {
+      metrics.sessionErrors.add(1)
+      continue
+    }
+
+    if (pn.conflict) {
+      result.conflicts++
+      metrics.pushConflicts.add(1)
+      metrics.conflictRate.add(true)
+      version = typeof pn.serverVersion === 'number' ? pn.serverVersion : version
+
+      if (resolve) {
+        const t0 = Date.now()
+        const rr = resolveConflict(token, noteId, content, clientId)
+        let rn
+        try {
+          rn = rr.json('data.resolveConflict')
+        } catch (_e) {
+          metrics.sessionErrors.add(1)
+          continue
+        }
+        if (rn && typeof rn.version === 'number') {
+          metrics.resolveTime.add(Date.now() - t0)
+          result.resolves++
+          version = rn.version
+        } else {
+          metrics.sessionErrors.add(1)
+        }
+      }
+    } else if (pn.note) {
+      result.successes++
+      metrics.conflictRate.add(false)
+      version = pn.note.version
+    }
+  }
+
   return result
 }

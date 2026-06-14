@@ -30,6 +30,13 @@ test (Playwright) if it only manifests through the running app.
 When a single change touches multiple distinct defects, prefer **one failing
 test per defect** so each can be fixed and verified independently.
 
+### Open: merge strategy
+
+**Undecided:** whether pull requests should be squash-merged or merged with a
+merge commit. PR #1 was merged as a merge commit, but no policy has been agreed.
+Decide this and document it here (and enforce it in the repo's branch settings)
+so branch history stays consistent.
+
 ### Load tests and the results log
 
 The realtime path has k6 load tests in [`load-tests/`](./load-tests/). After a
