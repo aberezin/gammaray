@@ -2,11 +2,17 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { RecordList, RecordForm } from '@gammaray/ui'
+import { RecordList, RecordForm, RecordConflictBanner } from '@gammaray/ui'
 import { contactDescriptor, type RowRecord, type ContactRevisionDto } from '@gammaray/core'
 import { getDatabase } from '@/lib/rxdb'
-import { startContactReplication } from '@/lib/contacts-sync'
+import { startContactReplication, resolveContact } from '@/lib/contacts-sync'
 import { makeGqlClient } from '@/lib/graphql-client'
+
+interface ContactConflict {
+  contactId: string
+  mine: Record<string, unknown>
+  theirs: Record<string, unknown>
+}
 
 interface Props {
   accessToken: string
@@ -28,8 +34,10 @@ export function ContactsPageClient({ accessToken }: Props) {
   const [draft, setDraft] = useState<Record<string, unknown>>({})
   const [editing, setEditing] = useState(false)
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({})
+  const [conflict, setConflict] = useState<ContactConflict | null>(null)
   const gqlClient = useRef(makeGqlClient(accessToken))
   const clientId = useRef<string>(crypto.randomUUID())
+  const replicationRef = useRef<ReturnType<typeof startContactReplication> | null>(null)
 
   // Load + replicate the contact collection (pull-only for the Read increment).
   useEffect(() => {
@@ -40,7 +48,14 @@ export function ContactsPageClient({ accessToken }: Props) {
     async function init() {
       const db = await getDatabase()
       if (!active) return
-      replication = startContactReplication(db.contact, gqlClient.current, clientId.current)
+      replication = startContactReplication(
+        db.contact,
+        gqlClient.current,
+        clientId.current,
+        ({ contactId, serverData, clientData }) =>
+          setConflict({ contactId, mine: clientData, theirs: serverData }),
+      )
+      replicationRef.current = replication
       sub = db.contact.find().$.subscribe((docs) => {
         setRecords(docs.map((d) => d.toJSON() as RowRecord))
       })
@@ -51,6 +66,7 @@ export function ContactsPageClient({ accessToken }: Props) {
       active = false
       sub?.unsubscribe()
       if (replication) void replication.cancel()
+      replicationRef.current = null
     }
   }, [])
 
@@ -133,6 +149,22 @@ export function ContactsPageClient({ accessToken }: Props) {
     setSelectedId(id)
   }
 
+  // Resolve a conflict by writing the chosen row, then re-sync so the local
+  // store reflects the resolved server state.
+  async function resolveWith(row: Record<string, unknown>) {
+    if (!conflict) return
+    const input = {
+      id: conflict.contactId,
+      firstName: String(row.firstName ?? ''),
+      lastName: String(row.lastName ?? ''),
+      email: String(row.email ?? ''),
+      phone: String(row.phone ?? ''),
+    }
+    await resolveContact(gqlClient.current, input, clientId.current)
+    setConflict(null)
+    replicationRef.current?.reSync()
+  }
+
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: '24px 16px' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -147,6 +179,16 @@ export function ContactsPageClient({ accessToken }: Props) {
           <Link href="/" style={{ fontSize: 13, color: '#3b82f6' }}>← Notes</Link>
         </div>
       </header>
+
+      {conflict && (
+        <RecordConflictBanner
+          descriptor={contactDescriptor}
+          mine={conflict.mine}
+          theirs={conflict.theirs}
+          onKeepMine={() => void resolveWith(conflict.mine)}
+          onKeepTheirs={() => void resolveWith(conflict.theirs)}
+        />
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
         <div>

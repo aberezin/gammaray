@@ -126,6 +126,50 @@ export class ContactsService {
       return { conflict: false, contact: updated }
     })
   }
+
+  // Resolve a detected conflict by writing the user's chosen row. Unconditional
+  // (row lock, version bump) so it serializes rather than re-conflicting, and it
+  // marks the row's outstanding 'detected' revisions as resolved.
+  async resolveContactConflict(input: ContactInput, clientId: string): Promise<ContactEntity> {
+    return this.dataSource.transaction(async (manager) => {
+      const contactRepo = manager.getRepository(ContactEntity)
+      const revRepo = manager.getRepository(ContactRevisionEntity)
+
+      const existing = await contactRepo
+        .createQueryBuilder('c')
+        .where('c.id = :id', { id: input.id })
+        .setLock('pessimistic_write')
+        .getOneOrFail()
+
+      const nextVersion = existing.version + 1
+      await contactRepo.update(existing.id, {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email: input.email,
+        phone: input.phone,
+        version: nextVersion,
+      })
+      const resolved = { ...existing, ...incoming(input), version: nextVersion } as ContactEntity
+
+      await revRepo.save(
+        revRepo.create({
+          contactId: existing.id,
+          data: snapshot(resolved),
+          version: nextVersion,
+          clientId,
+          conflictStatus: ConflictStatus.Resolved,
+        }),
+      )
+      await revRepo
+        .createQueryBuilder()
+        .update()
+        .set({ conflictStatus: ConflictStatus.Resolved })
+        .where('contactId = :id AND conflictStatus = :s', { id: existing.id, s: ConflictStatus.Detected })
+        .execute()
+
+      return resolved
+    })
+  }
 }
 
 function incoming(input: ContactInput): Record<string, unknown> {

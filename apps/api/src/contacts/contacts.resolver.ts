@@ -47,6 +47,14 @@ export class ContactsResolver {
     out.serverData = r.serverData ? JSON.stringify(r.serverData) : null
     return out
   }
+
+  @Mutation(() => ContactModel)
+  async resolveContactConflict(
+    @Args('input') input: ContactInput,
+    @Args('clientId') clientId: string,
+  ): Promise<ContactModel> {
+    return toContactModel(await this.service.resolveContactConflict(input, clientId))
+  }
 }
 
 function toIso(d: Date | string): string {

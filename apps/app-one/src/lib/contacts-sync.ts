@@ -14,22 +14,52 @@ const PUSH_CONTACT = `
   mutation PushContact($input: ContactInput!, $expectedVersion: Int!, $clientId: String!) {
     pushContact(input: $input, expectedVersion: $expectedVersion, clientId: $clientId) {
       conflict
+      serverVersion
+      serverData
       contact { ${PULL_FIELDS} }
     }
+  }
+`
+
+const RESOLVE_CONTACT = `
+  mutation ResolveContact($input: ContactInput!, $clientId: String!) {
+    resolveContactConflict(input: $input, clientId: $clientId) { ${PULL_FIELDS} }
   }
 `
 
 interface PushContactResult {
   pushContact: {
     conflict: boolean
+    serverVersion: number | null
+    serverData: string | null
     contact: RowRecord | null
   }
+}
+
+export type ContactConflictHandler = (opts: {
+  contactId: string
+  serverVersion: number
+  serverData: Record<string, unknown>
+  clientData: Record<string, unknown>
+}) => void
+
+export async function resolveContact(
+  gqlClient: GraphQLClient,
+  input: Record<string, unknown>,
+  clientId: string,
+): Promise<RowRecord> {
+  const data = await gqlClient.request<{ resolveContactConflict: RowRecord }>(RESOLVE_CONTACT, {
+    input,
+    clientId,
+  })
+  return data.resolveContactConflict
 }
 
 export function startContactReplication(
   collection: RxCollection<RowRecord>,
   gqlClient: GraphQLClient,
   clientId: string,
+  onConflict?: ContactConflictHandler,
 ) {
   return replicateRxCollection<RowRecord, { pulledAt: string }>({
     collection,
@@ -70,8 +100,23 @@ export function startContactReplication(
           clientId,
         })
         const result = data.pushContact
-        // Return the server row so RxDB reconciles the local version (no conflict
-        // path yet — that arrives with Update).
+
+        if (result.conflict && result.serverData != null) {
+          const serverData = JSON.parse(result.serverData) as Record<string, unknown>
+          // Capture the client's attempted row before RxDB overwrites the local
+          // doc with the server state below.
+          onConflict?.({
+            contactId: input.id,
+            serverVersion: result.serverVersion ?? 0,
+            serverData,
+            clientData: input,
+          })
+          // Reconcile the local doc to the server state so it isn't stuck; the
+          // user's edit is held in the conflict UI for resolution.
+          return [{ ...doc, ...serverData, _deleted: false }]
+        }
+
+        // Success: return the server row so RxDB reconciles the local version.
         if (result.contact) {
           return [{ ...doc, ...result.contact, _deleted: false }]
         }
