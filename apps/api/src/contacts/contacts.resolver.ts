@@ -1,8 +1,13 @@
-import { Resolver, Query, Args } from '@nestjs/graphql'
+import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql'
 import { UseGuards } from '@nestjs/common'
 import { ContactEntity, ContactRevisionEntity } from '@gammaray/database'
 import { ContactsService } from './contacts.service'
-import { ContactModel, ContactRevisionModel } from './contact.model'
+import {
+  ContactModel,
+  ContactRevisionModel,
+  ContactInput,
+  ContactConflictResult,
+} from './contact.model'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 
 @Resolver(() => ContactModel)
@@ -26,6 +31,21 @@ export class ContactsResolver {
     @Args('contactId') contactId: string,
   ): Promise<ContactRevisionModel[]> {
     return (await this.service.getContactRevisions(contactId)).map(toContactRevisionModel)
+  }
+
+  @Mutation(() => ContactConflictResult)
+  async pushContact(
+    @Args('input') input: ContactInput,
+    @Args('expectedVersion', { type: () => Int }) expectedVersion: number,
+    @Args('clientId') clientId: string,
+  ): Promise<ContactConflictResult> {
+    const r = await this.service.pushContact(input, expectedVersion, clientId)
+    const out = new ContactConflictResult()
+    out.conflict = r.conflict
+    out.contact = r.contact ? toContactModel(r.contact) : null
+    out.serverVersion = r.serverVersion ?? null
+    out.serverData = r.serverData ? JSON.stringify(r.serverData) : null
+    return out
   }
 }
 

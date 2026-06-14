@@ -24,7 +24,10 @@ export function ContactsPageClient({ accessToken }: Props) {
   const [records, setRecords] = useState<RowRecord[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [revisions, setRevisions] = useState<ContactRevisionDto[]>([])
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState<Record<string, unknown>>({})
   const gqlClient = useRef(makeGqlClient(accessToken))
+  const clientId = useRef<string>(crypto.randomUUID())
 
   // Load + replicate the contact collection (pull-only for the Read increment).
   useEffect(() => {
@@ -35,7 +38,7 @@ export function ContactsPageClient({ accessToken }: Props) {
     async function init() {
       const db = await getDatabase()
       if (!active) return
-      replication = startContactReplication(db.contact, gqlClient.current)
+      replication = startContactReplication(db.contact, gqlClient.current, clientId.current)
       sub = db.contact.find().$.subscribe((docs) => {
         setRecords(docs.map((d) => d.toJSON() as RowRecord))
       })
@@ -71,11 +74,45 @@ export function ContactsPageClient({ accessToken }: Props) {
 
   const selected = records.find((r) => r.id === selectedId) ?? null
 
+  function startCreate() {
+    setSelectedId(null)
+    setDraft({})
+    setCreating(true)
+  }
+
+  // Mint the client-side UUID and insert locally; replication pushes it to the
+  // server (offline-first create). The new row then appears via the live query.
+  async function handleSave() {
+    const id = crypto.randomUUID()
+    const db = await getDatabase()
+    await db.contact.insert({
+      id,
+      firstName: String(draft.firstName ?? ''),
+      lastName: String(draft.lastName ?? ''),
+      email: String(draft.email ?? ''),
+      phone: String(draft.phone ?? ''),
+      version: 0,
+      updatedAt: new Date().toISOString(),
+      _deleted: false,
+    })
+    setCreating(false)
+    setDraft({})
+    setSelectedId(id)
+  }
+
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: '24px 16px' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ margin: 0, fontSize: 20 }}>Contacts</h1>
-        <Link href="/" style={{ fontSize: 13, color: '#3b82f6' }}>← Notes</Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={startCreate}
+            style={{ fontSize: 13, padding: '6px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
+          >
+            New contact
+          </button>
+          <Link href="/" style={{ fontSize: 13, color: '#3b82f6' }}>← Notes</Link>
+        </div>
       </header>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
@@ -89,7 +126,31 @@ export function ContactsPageClient({ accessToken }: Props) {
         </div>
 
         <div>
-          {selected ? (
+          {creating ? (
+            <>
+              <h2 style={{ margin: '0 0 12px', fontSize: 15, color: '#374151' }}>New contact</h2>
+              <RecordForm
+                descriptor={contactDescriptor}
+                record={draft}
+                readOnly={false}
+                onChange={(field, value) => setDraft((d) => ({ ...d, [field]: value }))}
+              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button
+                  onClick={() => void handleSave()}
+                  style={{ fontSize: 13, padding: '6px 14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => { setCreating(false); setDraft({}) }}
+                  style={{ fontSize: 13, padding: '6px 14px', background: '#6b7280', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : selected ? (
             <>
               <h2 style={{ margin: '0 0 12px', fontSize: 15, color: '#374151' }}>Record</h2>
               <RecordForm descriptor={contactDescriptor} record={selected} readOnly />
