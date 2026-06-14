@@ -39,47 +39,102 @@ export class ContactsService {
     })
   }
 
-  // Create increment: insert a new row (client-generated id) at version 1 and
-  // record its first revision snapshot. Editing an existing row is the Update
-  // increment, which will add the version check + merge strategy here.
+  // Create + Update. A new id inserts at version 1. An existing id is reconciled
+  // with optimistic concurrency (Model A): if the row is still at expectedVersion
+  // it fast-forwards; otherwise it diverged. The default WholeRow merge strategy
+  // treats any divergence as a conflict (DisjointFields auto-merge comes later).
   async pushContact(
     input: ContactInput,
-    _expectedVersion: number,
+    expectedVersion: number,
     clientId: string,
   ): Promise<ContactPushResult> {
     return this.dataSource.transaction(async (manager) => {
       const contactRepo = manager.getRepository(ContactEntity)
       const revRepo = manager.getRepository(ContactRevisionEntity)
 
-      // Guard against the TypeORM footgun where findOneBy({ id: undefined })
-      // matches the first row instead of nothing.
-      const existing = input.id ? await contactRepo.findOneBy({ id: input.id }) : null
-      if (existing) {
-        // Update is not implemented yet — return current state unchanged.
-        return { conflict: false, contact: existing }
+      // Row-level lock so concurrent pushes to the same row serialize.
+      const existing = input.id
+        ? await contactRepo
+            .createQueryBuilder('c')
+            .where('c.id = :id', { id: input.id })
+            .setLock('pessimistic_write')
+            .getOne()
+        : null
+
+      // Create: brand-new row.
+      if (!existing) {
+        const created = await contactRepo.save(
+          contactRepo.create({
+            id: input.id,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            email: input.email,
+            phone: input.phone,
+            version: 1,
+          }),
+        )
+        await revRepo.save(
+          revRepo.create({
+            contactId: created.id,
+            data: snapshot(created),
+            version: 1,
+            clientId,
+            conflictStatus: ConflictStatus.None,
+          }),
+        )
+        return { conflict: false, contact: created }
       }
 
-      const created = await contactRepo.save(
-        contactRepo.create({
-          id: input.id,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          email: input.email,
-          phone: input.phone,
-          version: 1,
-        }),
-      )
+      // Update: WholeRow strategy — diverged version is a conflict.
+      if (existing.version !== expectedVersion) {
+        await revRepo.save(
+          revRepo.create({
+            contactId: existing.id,
+            data: { ...incoming(input), version: existing.version },
+            version: existing.version,
+            clientId,
+            conflictStatus: ConflictStatus.Detected,
+          }),
+        )
+        return {
+          conflict: true,
+          contact: null,
+          serverVersion: existing.version,
+          serverData: snapshot(existing),
+        }
+      }
+
+      // Fast-forward.
+      const nextVersion = existing.version + 1
+      await contactRepo.update(existing.id, {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email: input.email,
+        phone: input.phone,
+        version: nextVersion,
+      })
+      const updated = { ...existing, ...incoming(input), version: nextVersion } as ContactEntity
       await revRepo.save(
         revRepo.create({
-          contactId: created.id,
-          data: snapshot(created),
-          version: 1,
+          contactId: existing.id,
+          data: snapshot(updated),
+          version: nextVersion,
           clientId,
           conflictStatus: ConflictStatus.None,
         }),
       )
-      return { conflict: false, contact: created }
+      return { conflict: false, contact: updated }
     })
+  }
+}
+
+function incoming(input: ContactInput): Record<string, unknown> {
+  return {
+    id: input.id,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    email: input.email,
+    phone: input.phone,
   }
 }
 

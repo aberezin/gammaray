@@ -26,6 +26,8 @@ export function ContactsPageClient({ accessToken }: Props) {
   const [revisions, setRevisions] = useState<ContactRevisionDto[]>([])
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<Record<string, unknown>>({})
+  const [editing, setEditing] = useState(false)
+  const [editDraft, setEditDraft] = useState<Record<string, unknown>>({})
   const gqlClient = useRef(makeGqlClient(accessToken))
   const clientId = useRef<string>(crypto.randomUUID())
 
@@ -52,7 +54,11 @@ export function ContactsPageClient({ accessToken }: Props) {
     }
   }, [])
 
-  // Fetch the selected record's version history.
+  const selected = records.find((r) => r.id === selectedId) ?? null
+  const selectedVersion = selected ? Number(selected.version ?? 0) : null
+
+  // Fetch the selected record's version history. Re-fetches when its version
+  // changes (e.g. after an edit reconciles) so history stays current.
   useEffect(() => {
     if (!selectedId) {
       setRevisions([])
@@ -70,14 +76,41 @@ export function ContactsPageClient({ accessToken }: Props) {
     return () => {
       active = false
     }
-  }, [selectedId])
-
-  const selected = records.find((r) => r.id === selectedId) ?? null
+  }, [selectedId, selectedVersion])
 
   function startCreate() {
     setSelectedId(null)
+    setEditing(false)
     setDraft({})
     setCreating(true)
+  }
+
+  function select(id: string) {
+    setCreating(false)
+    setEditing(false)
+    setSelectedId(id)
+  }
+
+  function startEdit() {
+    if (!selected) return
+    setEditDraft({ ...selected })
+    setEditing(true)
+  }
+
+  // Patch the local row; replication pushes it with the row's expectedVersion.
+  // The server fast-forwards (no conflict in this path) and the version bumps.
+  async function handleSaveEdit() {
+    const db = await getDatabase()
+    const doc = await db.contact.findOne(selectedId ?? '').exec()
+    if (doc) {
+      await doc.patch({
+        firstName: String(editDraft.firstName ?? ''),
+        lastName: String(editDraft.lastName ?? ''),
+        email: String(editDraft.email ?? ''),
+        phone: String(editDraft.phone ?? ''),
+      })
+    }
+    setEditing(false)
   }
 
   // Mint the client-side UUID and insert locally; replication pushes it to the
@@ -121,7 +154,7 @@ export function ContactsPageClient({ accessToken }: Props) {
             descriptor={contactDescriptor}
             records={records}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={select}
           />
         </div>
 
@@ -152,8 +185,44 @@ export function ContactsPageClient({ accessToken }: Props) {
             </>
           ) : selected ? (
             <>
-              <h2 style={{ margin: '0 0 12px', fontSize: 15, color: '#374151' }}>Record</h2>
-              <RecordForm descriptor={contactDescriptor} record={selected} readOnly />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 12px' }}>
+                <h2 style={{ margin: 0, fontSize: 15, color: '#374151' }}>Record</h2>
+                {!editing && (
+                  <button
+                    onClick={startEdit}
+                    style={{ fontSize: 13, padding: '4px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+
+              {editing ? (
+                <>
+                  <RecordForm
+                    descriptor={contactDescriptor}
+                    record={editDraft}
+                    readOnly={false}
+                    onChange={(field, value) => setEditDraft((d) => ({ ...d, [field]: value }))}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button
+                      onClick={() => void handleSaveEdit()}
+                      style={{ fontSize: 13, padding: '6px 14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditing(false)}
+                      style={{ fontSize: 13, padding: '6px 14px', background: '#6b7280', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <RecordForm descriptor={contactDescriptor} record={selected} readOnly />
+              )}
 
               <h2 style={{ margin: '20px 0 12px', fontSize: 15, color: '#374151' }}>Version history</h2>
               {revisions.length === 0 ? (
