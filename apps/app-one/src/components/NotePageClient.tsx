@@ -29,6 +29,10 @@ export function NotePageClient({ accessToken }: Props) {
   // Debounce timer so a burst of keystrokes collapses into a single versioned
   // write, instead of one push per character racing the version baseline.
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Last note version the editor has seen; used to refresh the revision list
+  // whenever a new accepted version arrives — including remote edits pushed live
+  // from another tab (which would otherwise never refresh this tab's history).
+  const lastVersionRef = useRef<number | null>(null)
   const clientId = useRef<string>(
     typeof sessionStorage !== 'undefined'
       ? (sessionStorage.getItem('clientId') ?? (() => {
@@ -84,6 +88,13 @@ export function NotePageClient({ accessToken }: Props) {
       sub = db.note.find().$.subscribe((docs) => {
         const doc = docs[0]
         if (!doc) return
+        // A new accepted version (local push reconciled, or a remote edit pushed
+        // live from another tab) means the history changed — refresh it. This is
+        // what keeps a passive tab's version list in sync, not just its editor.
+        if (lastVersionRef.current !== null && doc.version !== lastVersionRef.current) {
+          void fetchRevisions()
+        }
+        lastVersionRef.current = doc.version
         // While the user has an unsynced local edit, don't overwrite the editor
         // with the store's value — that would clobber in-progress typing. The
         // debounce timer (flushEdit) is the single writer that persists it.
@@ -97,7 +108,7 @@ export function NotePageClient({ accessToken }: Props) {
       active = false
       sub?.unsubscribe()
     }
-  }, [])
+  }, [fetchRevisions])
 
   // Effect 2: Replication — only runs when online. Re-runs (restart) on
   // offline→online transition, and is cleaned up on online→offline.

@@ -88,4 +88,43 @@ test.describe('Sync race conditions', () => {
     await ctx1.close()
     await ctx2.close()
   })
+
+  test('(3) a remote edit updates the other tab\'s version history live', async ({ browser }: { browser: Browser }) => {
+    const email = uniqueEmail('livehistory')
+
+    // Setup: note at v1 so both tabs load a populated, synced note.
+    const setupCtx = await browser.newContext()
+    const setupPage = await setupCtx.newPage()
+    await register(setupPage, email)
+    await setupPage.locator('textarea').fill('Base content')
+    await waitForSynced(setupPage)
+    await expect(setupPage.getByText('v1').first()).toBeVisible({ timeout: 8_000 })
+    await setupCtx.close()
+
+    // Two tabs, same user, both online and synced, both showing v1 in history.
+    const ctxA = await browser.newContext()
+    const tabA = await ctxA.newPage()
+    await login(tabA, email)
+    await waitForSynced(tabA)
+
+    const ctxB = await browser.newContext()
+    const tabB = await ctxB.newPage()
+    await login(tabB, email)
+    await waitForSynced(tabB)
+    await expect(tabB.locator('textarea')).toHaveValue('Base content')
+    await expect(tabB.getByText('v1').first()).toBeVisible({ timeout: 8_000 })
+
+    // Tab A edits -> note becomes v2.
+    await tabA.locator('textarea').fill('Base content!')
+    await waitForSynced(tabA)
+    await expect(tabA.getByText('v2').first()).toBeVisible({ timeout: 8_000 })
+
+    // Tab B receives the content live (already works) ...
+    await expect(tabB.locator('textarea')).toHaveValue('Base content!', { timeout: 8_000 })
+    // ... and its version history must also update to v2 without any local action.
+    await expect(tabB.getByText('v2').first()).toBeVisible({ timeout: 8_000 })
+
+    await ctxA.close()
+    await ctxB.close()
+  })
 })
