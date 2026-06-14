@@ -32,6 +32,9 @@ pnpm --filter @gammaray/database db:migrate
 
 # Start PostgreSQL (required before running API)
 docker compose up -d
+
+# Load tests (k6) — API must be running on :3001
+k6 run load-tests/k6/single-socket.js    # baseline; see load-tests/README.md
 ```
 
 Build order matters: `packages/core` → `packages/database` → `apps/api`. The `packages/ui` has no separate build step — Next.js transpiles it directly.
@@ -47,6 +50,7 @@ packages/core     Shared TypeScript DTOs and enums (NoteDto, ConflictResultDto, 
 packages/auth     JwtPayload interface shared between api and app-one
 packages/database TypeORM entities, migrations, and data source config
 packages/ui       Shared React components (NoteEditor, RevisionList, ConflictBanner, OfflineToggle, SyncIndicator)
+load-tests        k6 load tests for the realtime path (see load-tests/README.md + RESULTS.md)
 ```
 
 ### Data flow
