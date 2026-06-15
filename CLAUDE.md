@@ -151,3 +151,7 @@ This ensures clones of the repo will have executable scripts. Examples: `scripts
 - Two frontend applications (`apps/app-one`, `apps/app-two` placeholder) share one backend and must communicate only through it.
 - Messaging broker (Redis vs RabbitMQ) is still an open decision — see `platform-architecture.md`.
 - Commit conventions are not yet defined.
+
+## TODO
+
+- **Document container architecture with Mermaid diagram:** Create a visual showing the three containers (postgres, api, frontend), their ports, volumes, and inter-container networking (docker internal network vs host port mapping). Include health checks and startup dependencies.
