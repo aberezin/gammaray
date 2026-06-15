@@ -24,7 +24,11 @@ services:
     environment:
       NODE_ENV: development
       API_PORT: 3001
-      DATABASE_URL: postgresql://gammaray:gammaray@postgres:5432/gammaray
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: gammaray
+      DATABASE_PASSWORD: gammaray
+      DATABASE_NAME: gammaray
       NEXTAUTH_URL: http://localhost:3000
     depends_on:
       postgres:

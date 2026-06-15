@@ -1,24 +1,3 @@
-# Build stage
-FROM node:22-alpine AS builder
-
-WORKDIR /app
-
-# Install pnpm
-RUN npm install -g pnpm
-
-# Copy workspace files
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
-COPY packages ./packages
-COPY apps/api ./apps/api
-
-# Install dependencies and build packages in dependency order
-RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @gammaray/core build
-RUN pnpm --filter @gammaray/auth build
-RUN pnpm --filter @gammaray/database build
-RUN pnpm --filter @gammaray/api build
-
-# Runtime stage
 FROM node:22-alpine
 
 WORKDIR /app
@@ -26,8 +5,13 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy workspace and dependencies from builder
-COPY --from=builder /app ./
+# Copy only package management files
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json ./
+COPY packages ./packages
+COPY apps/api ./apps/api
+
+# Install dependencies (will use volume-mounted node_modules in dev)
+RUN pnpm install --frozen-lockfile
 
 # Expose port (can be overridden with API_PORT env var)
 EXPOSE 3001
