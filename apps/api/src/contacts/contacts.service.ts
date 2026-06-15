@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, Repository } from 'typeorm'
+import { DataSource, Repository, Not } from 'typeorm'
 import { ContactEntity, ContactRevisionEntity } from '@gammaray/database'
-import { ConflictStatus } from '@gammaray/core'
+import { ConflictStatus, contactDescriptor, mergeRows } from '@gammaray/core'
 import { ContactInput } from './contact.model'
 
 export interface ContactPushResult {
@@ -86,24 +86,62 @@ export class ContactsService {
         return { conflict: false, contact: created }
       }
 
-      // WholeRow strategy — any diverged version is a conflict, whether the push
-      // is an edit or a delete. (This is the delete-vs-edit conflict path too.)
+      // Diverged version — reconcile per the table's merge strategy.
       if (existing.version !== expectedVersion) {
+        const asConflict = async (): Promise<ContactPushResult> => {
+          await revRepo.save(
+            revRepo.create({
+              contactId: existing.id,
+              data: { ...incoming(input), deleted: input.deleted, version: existing.version },
+              version: existing.version,
+              clientId,
+              conflictStatus: ConflictStatus.Detected,
+            }),
+          )
+          return {
+            conflict: true,
+            contact: null,
+            serverVersion: existing.version,
+            serverData: snapshot(existing),
+          }
+        }
+
+        // A delete on either side can't be field-merged — surface it.
+        if (input.deleted || existing.deleted) return asConflict()
+
+        // 3-way merge against the ancestor snapshot at the client's version.
+        const base = await loadBaseSnapshot(revRepo, existing.id, expectedVersion)
+        const result = mergeRows(contactDescriptor, base, incoming(input), snapshot(existing))
+        if (!result.ok) return asConflict()
+
+        // Auto-merged (e.g. disjoint fields) — apply the merged row.
+        const nextVersion = existing.version + 1
+        const m = result.merged
+        await contactRepo.update(existing.id, {
+          firstName: String(m.firstName ?? ''),
+          lastName: String(m.lastName ?? ''),
+          email: String(m.email ?? ''),
+          phone: String(m.phone ?? ''),
+          version: nextVersion,
+        })
+        const merged = {
+          ...existing,
+          firstName: String(m.firstName ?? ''),
+          lastName: String(m.lastName ?? ''),
+          email: String(m.email ?? ''),
+          phone: String(m.phone ?? ''),
+          version: nextVersion,
+        } as ContactEntity
         await revRepo.save(
           revRepo.create({
             contactId: existing.id,
-            data: { ...incoming(input), deleted: input.deleted, version: existing.version },
-            version: existing.version,
+            data: snapshot(merged),
+            version: nextVersion,
             clientId,
-            conflictStatus: ConflictStatus.Detected,
+            conflictStatus: ConflictStatus.None,
           }),
         )
-        return {
-          conflict: true,
-          contact: null,
-          serverVersion: existing.version,
-          serverData: snapshot(existing),
-        }
+        return { conflict: false, contact: merged }
       }
 
       // Fast-forward: apply the delete or the edit.
@@ -194,6 +232,20 @@ export class ContactsService {
       return resolved
     })
   }
+}
+
+// The accepted (non-detected) revision snapshot at a given version — the common
+// ancestor for a 3-way merge. Null if it's been truncated/never recorded.
+async function loadBaseSnapshot(
+  revRepo: Repository<ContactRevisionEntity>,
+  contactId: string,
+  version: number,
+): Promise<Record<string, unknown> | null> {
+  const rev = await revRepo.findOne({
+    where: { contactId, version, conflictStatus: Not(ConflictStatus.Detected) },
+    order: { createdAt: 'DESC' },
+  })
+  return rev ? (rev.data as Record<string, unknown>) : null
 }
 
 function incoming(input: ContactInput): Record<string, unknown> {

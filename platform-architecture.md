@@ -52,6 +52,12 @@ hold the detailed argument for individual decisions.
 - [ADR 0001 — Concurrency token model for type-A rows](./docs/adr/0001-concurrency-token-model.md):
   single row `version` + 3-way merge against the ancestor (not per-field vectors);
   per-table merge strategy carries the policy.
+- [ADR 0002 — Descriptor-per-table, schema-driven architecture](./docs/adr/0002-descriptor-driven-tables.md):
+  one `TableDescriptor` drives the model, store schema, sync queries, and generic UI.
+- [ADR 0003 — Field-aware change control with client-generated UUIDs](./docs/adr/0003-field-aware-client-uuids.md):
+  rows tracked per-field (not opaque blobs); clients mint primary keys for offline create.
+- [ADR 0004 — Merge strategy as per-table policy](./docs/adr/0004-merge-strategy-as-table-policy.md):
+  WholeRow default, DisjointFields auto-merge opt-in; mechanism vs. policy.
 
 ## Performance & Capacity (load testing)
 

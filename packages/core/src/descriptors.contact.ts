@@ -7,7 +7,9 @@ export const contactDescriptor: TableDescriptor = {
   table: 'contact',
   collection: 'contact',
   identity: { field: 'id', clientGenerated: true },
-  mergeStrategy: MergeStrategyKind.WholeRow, // dormant until UPDATE
+  // Disjoint field edits auto-merge (3-way against the ancestor); same-field
+  // edits and delete-vs-edit still conflict.
+  mergeStrategy: MergeStrategyKind.DisjointFields,
   display: { titleFields: ['firstName', 'lastName'] },
   fields: [
     { name: 'id', label: 'ID', kind: FieldKind.Uuid, readOnly: true },
