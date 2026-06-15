@@ -6,15 +6,9 @@ import { ConflictStatus, contactDescriptor, mergeRows } from '@gammaray/core'
 import { ContactInput } from './contact.model'
 import { ApplyOutcome, RowChangeInput } from '../batch/batch.types'
 
-export interface ContactPushResult {
-  conflict: boolean
-  contact: ContactEntity | null
-  serverVersion?: number
-  serverData?: Record<string, unknown>
-}
-
-// Contacts are a shared, globally-visible dataset — no per-user scoping, no
-// foreign keys. Read + Create implemented; Update/Delete come next.
+// Contacts are a shared, globally-visible dataset — no per-user scoping. Writes
+// go through applyContactChange (driven by the batch endpoint); resolution has
+// its own mutation.
 @Injectable()
 export class ContactsService {
   constructor(
@@ -167,37 +161,6 @@ export class ContactsService {
     })
     await saveRev(updated)
     return { status: 'APPLIED', row: updated, emit: updated }
-  }
-
-  // Legacy single-row push (kept alongside the batch endpoint during migration).
-  // Delegates to applyContactChange so write logic lives in one place.
-  async pushContact(
-    input: ContactInput,
-    expectedVersion: number,
-    clientId: string,
-  ): Promise<ContactPushResult> {
-    const change: RowChangeInput = {
-      table: 'contact',
-      id: input.id,
-      op: input.deleted ? 'DELETE' : 'UPSERT',
-      data: incoming(input),
-      expectedVersion,
-    }
-    const outcome = await this.dataSource.transaction((manager) =>
-      this.applyContactChange(manager, change, clientId),
-    )
-    if (outcome.status === 'CONFLICT') {
-      return {
-        conflict: true,
-        contact: null,
-        serverVersion: outcome.serverVersion,
-        serverData: (outcome.row as Record<string, unknown> | null) ?? undefined,
-      }
-    }
-    if (outcome.status === 'REJECTED') {
-      throw new Error(outcome.reason ?? 'contact change rejected')
-    }
-    return { conflict: false, contact: (outcome.row as ContactEntity | null) ?? null }
   }
 
   // Resolve a detected conflict by writing the user's chosen row. Unconditional

@@ -38,23 +38,6 @@ export class ContactInput {
 }
 
 @ObjectType()
-export class ContactConflictResult {
-  @Field()
-  conflict!: boolean
-
-  @Field(() => ContactModel, { nullable: true })
-  contact?: ContactModel | null
-
-  /** Set when a conflict is detected (Update increment). */
-  @Field(() => Int, { nullable: true })
-  serverVersion?: number | null
-
-  /** Server's JSON snapshot when a conflict was detected (Update increment). */
-  @Field(() => String, { nullable: true })
-  serverData?: string | null
-}
-
-@ObjectType()
 export class ContactModel {
   @Field(() => ID)
   id!: string
