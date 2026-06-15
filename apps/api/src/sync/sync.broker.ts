@@ -3,10 +3,12 @@ import { PubSub } from 'graphql-subscriptions'
 import { NoteModel } from '../notes/note.model'
 import { ContactModel } from '../contacts/contact.model'
 import { CompanyModel } from '../companies/company.model'
+import { CategoryModel } from '../categories/category.model'
 
 const NOTE_UPDATED = 'noteUpdated'
 const CONTACT_UPDATED = 'contactUpdated'
 const COMPANY_UPDATED = 'companyUpdated'
+const CATEGORY_UPDATED = 'categoryUpdated'
 
 /**
  * Thin abstraction over a pub/sub backend.
@@ -42,6 +44,14 @@ export class SyncBroker implements OnModuleDestroy {
 
   companyAsyncIterator() {
     return this.pubSub.asyncIterator(COMPANY_UPDATED)
+  }
+
+  emitCategory(category: CategoryModel): void {
+    void this.pubSub.publish(CATEGORY_UPDATED, { categoryUpdated: category })
+  }
+
+  categoryAsyncIterator() {
+    return this.pubSub.asyncIterator(CATEGORY_UPDATED)
   }
 
   onModuleDestroy() {

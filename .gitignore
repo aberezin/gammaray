@@ -29,3 +29,5 @@ packages/*/src/**/*.d.ts.map
 # Misc
 .DS_Store
 *.log
+.idea/
+test-results/

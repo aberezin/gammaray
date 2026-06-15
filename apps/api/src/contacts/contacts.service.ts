@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, EntityManager, Repository, Not } from 'typeorm'
-import { ContactEntity, ContactRevisionEntity, CompanyEntity } from '@gammaray/database'
+import { DataSource, EntityManager, Repository, Not, In } from 'typeorm'
+import { ContactEntity, ContactRevisionEntity } from '@gammaray/database'
 import { ConflictStatus, contactDescriptor, mergeRows } from '@gammaray/core'
 import { ContactInput } from './contact.model'
 import { ApplyOutcome, RowChangeInput } from '../batch/batch.types'
@@ -34,6 +34,15 @@ export class ContactsService {
     })
   }
 
+  async existingIds(manager: EntityManager, ids: string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set()
+    const rows = await manager.getRepository(ContactEntity).find({
+      where: { id: In(ids) },
+      select: { id: true },
+    })
+    return new Set(rows.map((r) => r.id))
+  }
+
   // Apply one contact change against the given transaction manager (no tx of its
   // own — the batch coordinator owns it). Reconciles per the Model-A version
   // rules + the table's merge strategy, validates the company reference, and
@@ -45,7 +54,6 @@ export class ContactsService {
   ): Promise<ApplyOutcome> {
     const contactRepo = manager.getRepository(ContactEntity)
     const revRepo = manager.getRepository(ContactRevisionEntity)
-    const companyRepo = manager.getRepository(CompanyEntity)
 
     const d = change.data
     const ours = {
@@ -99,14 +107,8 @@ export class ContactsService {
       return { status: 'APPLIED', row: deleted, emit: deleted }
     }
 
-    // UPSERT — the company reference must resolve within this transaction.
-    if (ours.companyId) {
-      const company = await companyRepo.findOneBy({ id: ours.companyId })
-      if (!company) {
-        return { status: 'REJECTED', reason: `missing reference company:${ours.companyId}` }
-      }
-    }
-
+    // UPSERT — reference validation (incl. self-refs/cycles) is done by the batch
+    // coordinator against DB ∪ batch, so the applier just reconciles the row.
     if (!existing) {
       const created = await contactRepo.save(contactRepo.create({ ...ours, version: 1 }))
       await saveRev(created)

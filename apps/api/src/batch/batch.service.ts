@@ -1,25 +1,26 @@
 import { Injectable } from '@nestjs/common'
-import { DataSource } from 'typeorm'
+import { DataSource, EntityManager } from 'typeorm'
+import { FieldKind } from '@gammaray/core'
 import {
   contactDescriptor,
   companyDescriptor,
+  categoryDescriptor,
   dependencyOrder,
   type TableDescriptor,
 } from '@gammaray/core'
 import { ContactsService } from '../contacts/contacts.service'
 import { CompaniesService } from '../companies/companies.service'
+import { CategoriesService } from '../categories/categories.service'
 import { SyncBroker } from '../sync/sync.broker'
 import { ContactModel } from '../contacts/contact.model'
 import { CompanyModel } from '../companies/company.model'
+import { CategoryModel } from '../categories/category.model'
 import type { ApplyOutcome, RowChangeInput } from './batch.types'
 
 interface RegistryEntry {
   descriptor: TableDescriptor
-  apply: (
-    manager: import('typeorm').EntityManager,
-    change: RowChangeInput,
-    clientId: string,
-  ) => Promise<ApplyOutcome>
+  apply: (manager: EntityManager, change: RowChangeInput, clientId: string) => Promise<ApplyOutcome>
+  existing: (manager: EntityManager, ids: string[]) => Promise<Set<string>>
   emit: (row: Record<string, unknown>) => void
 }
 
@@ -32,10 +33,15 @@ export interface BatchRowResult {
   reason?: string | null
 }
 
-// Applies a batch of row changes atomically. The FK constraints are DEFERRABLE
-// (validated at commit), so the only ordering needed is processing parent tables
-// before child tables — so an in-batch parent exists when a child's reference is
-// validated. Conflicts/rejections are isolated and reported, not aborting.
+interface RefField {
+  field: string
+  table: string
+}
+
+// Applies a batch of row changes atomically. Referential integrity is validated
+// against DB ∪ batch (so a row may reference another row created in the same
+// batch, in any order — including self-references and cycles), and confirmed by
+// the DEFERRABLE constraints at commit.
 @Injectable()
 export class BatchService {
   private readonly registry: Record<string, RegistryEntry>
@@ -45,30 +51,33 @@ export class BatchService {
     private readonly dataSource: DataSource,
     private readonly contacts: ContactsService,
     private readonly companies: CompaniesService,
+    private readonly categories: CategoriesService,
     private readonly broker: SyncBroker,
   ) {
     this.registry = {
       company: {
         descriptor: companyDescriptor,
         apply: (m, c, cid) => this.companies.applyCompanyChange(m, c, cid),
+        existing: (m, ids) => this.companies.existingIds(m, ids),
         emit: (row) => this.broker.emitCompany(row as unknown as CompanyModel),
       },
       contact: {
         descriptor: contactDescriptor,
         apply: (m, c, cid) => this.contacts.applyContactChange(m, c, cid),
+        existing: (m, ids) => this.contacts.existingIds(m, ids),
         emit: (row) => this.broker.emitContact(row as unknown as ContactModel),
       },
+      category: {
+        descriptor: categoryDescriptor,
+        apply: (m, c, cid) => this.categories.applyCategoryChange(m, c, cid),
+        existing: (m, ids) => this.categories.existingIds(m, ids),
+        emit: (row) => this.broker.emitCategory(row as unknown as CategoryModel),
+      },
     }
-    this.tableOrder = dependencyOrder([companyDescriptor, contactDescriptor])
+    this.tableOrder = dependencyOrder([companyDescriptor, contactDescriptor, categoryDescriptor])
   }
 
   async pushBatch(changes: RowChangeInput[], clientId: string): Promise<BatchRowResult[]> {
-    // Parents before children, so an in-batch parent is present when a child's
-    // reference is validated within the transaction.
-    const ordered = [...changes].sort(
-      (a, b) => this.rank(a.table) - this.rank(b.table),
-    )
-
     const results: BatchRowResult[] = []
     const toEmit: Array<{ table: string; row: Record<string, unknown> }> = []
 
@@ -76,10 +85,20 @@ export class BatchService {
       // Validate FKs at commit, not per statement.
       await manager.query('SET CONSTRAINTS ALL DEFERRED')
 
+      const rejected = await this.validateReferences(manager, changes)
+
+      // Apply parents-first (a nicety for the deferred backstop; correctness is
+      // the reference validation above + the deferred constraint at commit).
+      const ordered = [...changes].sort((a, b) => this.rank(a.table) - this.rank(b.table))
       for (const change of ordered) {
+        const key = `${change.table}:${change.id}`
         const entry = this.registry[change.table]
         if (!entry) {
           results.push({ table: change.table, id: change.id, status: 'REJECTED', reason: `unknown table: ${change.table}` })
+          continue
+        }
+        if (rejected.has(key)) {
+          results.push({ table: change.table, id: change.id, status: 'REJECTED', reason: rejected.get(key) })
           continue
         }
         const outcome = await entry.apply(manager, change, clientId)
@@ -92,15 +111,71 @@ export class BatchService {
           reason: outcome.reason ?? null,
         })
         if (outcome.status === 'APPLIED' && outcome.emit) {
-          toEmit.push({ table: change.table, row: clean(outcome.emit)! })
+          toEmit.push({ table: change.table, row: clean(outcome.emit) as Record<string, unknown> })
         }
       }
     })
 
-    // Broadcast applied rows after the batch commits.
     for (const e of toEmit) this.registry[e.table]?.emit(e.row)
-
     return results
+  }
+
+  // Reject UPSERTs whose references can't be satisfied by DB ∪ batch. Order- and
+  // cycle-independent: a target counts as resolvable if it exists in the DB or is
+  // any (non-rejected) UPSERT in this batch. A rejected create poisons rows that
+  // reference it (fixpoint).
+  private async validateReferences(
+    manager: EntityManager,
+    changes: RowChangeInput[],
+  ): Promise<Map<string, string>> {
+    const upserts = changes.filter((c) => c.op === 'UPSERT')
+    const batchKeys = new Set(upserts.map((c) => `${c.table}:${c.id}`))
+
+    // External (non-batch) reference targets, grouped by referenced table.
+    const externalByTable = new Map<string, Set<string>>()
+    for (const c of upserts) {
+      for (const ref of this.refFields(c.table)) {
+        const v = c.data[ref.field]
+        if (typeof v === 'string' && v && !batchKeys.has(`${ref.table}:${v}`)) {
+          if (!externalByTable.has(ref.table)) externalByTable.set(ref.table, new Set())
+          externalByTable.get(ref.table)!.add(v)
+        }
+      }
+    }
+
+    const willExist = new Set(batchKeys)
+    for (const [table, ids] of externalByTable) {
+      const present = (await this.registry[table]?.existing(manager, [...ids])) ?? new Set()
+      for (const id of present) willExist.add(`${table}:${id}`)
+    }
+
+    const rejected = new Map<string, string>()
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const c of upserts) {
+        const key = `${c.table}:${c.id}`
+        if (rejected.has(key)) continue
+        for (const ref of this.refFields(c.table)) {
+          const v = c.data[ref.field]
+          if (typeof v === 'string' && v && !willExist.has(`${ref.table}:${v}`)) {
+            rejected.set(key, `missing reference ${ref.table}:${v}`)
+            willExist.delete(key)
+            changed = true
+            break
+          }
+        }
+      }
+    }
+    return rejected
+  }
+
+  private refFields(table: string): RefField[] {
+    const descriptor = this.registry[table]?.descriptor
+    if (!descriptor) return []
+    return descriptor.fields
+      .filter((f) => f.kind === FieldKind.Reference && f.references)
+      .map((f) => ({ field: f.name, table: f.references!.collection }))
   }
 
   private rank(table: string): number {

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { EntityManager, Repository } from 'typeorm'
+import { EntityManager, In, Repository } from 'typeorm'
 import { CompanyEntity } from '@gammaray/database'
 import { companyDescriptor, mergeRows } from '@gammaray/core'
 import { ApplyOutcome, RowChangeInput } from '../batch/batch.types'
@@ -14,6 +14,15 @@ export class CompaniesService {
 
   listCompanies(): Promise<CompanyEntity[]> {
     return this.companies.find({ where: { deleted: false }, order: { name: 'ASC' } })
+  }
+
+  async existingIds(manager: EntityManager, ids: string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set()
+    const rows = await manager.getRepository(CompanyEntity).find({
+      where: { id: In(ids) },
+      select: { id: true },
+    })
+    return new Set(rows.map((r) => r.id))
   }
 
   // Apply one company change in the batch transaction. Companies have no
