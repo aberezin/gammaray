@@ -15,5 +15,23 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "${API_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: development
+      API_PORT: 3001
+      DATABASE_URL: postgresql://gammaray:gammaray@postgres:5432/gammaray
+      NEXTAUTH_URL: http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+      - ./packages:/app/packages
+
 volumes:
   postgres_data:
