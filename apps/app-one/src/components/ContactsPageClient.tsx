@@ -423,7 +423,10 @@ export function ContactsPageClient({ accessToken }: Props) {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
-        <div>
+        {/* minWidth:0 lets the 1fr track shrink below the table's intrinsic
+            width (grid items default to min-width:auto); overflowX scrolls a wide
+            table inside the column instead of overflowing the whole page. */}
+        <div style={{ minWidth: 0, overflowX: 'auto' }}>
           <RecordList
             descriptor={contactDescriptor}
             records={displayRecords}
