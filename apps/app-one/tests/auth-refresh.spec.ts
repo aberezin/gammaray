@@ -41,14 +41,14 @@ test.describe('Auth refresh (server contract)', () => {
     expect(isJwt(next.accessToken)).toBe(true)
     expect(isJwt(next.refreshToken)).toBe(true)
 
-    // The refreshed access token authorizes a real API call.
+    // The refreshed access token authorizes a real API call (generic engine).
     const q = await api.post(`${API}/graphql`, {
       headers: { Authorization: `Bearer ${next.accessToken}`, 'Content-Type': 'application/json' },
-      data: { query: '{ contacts { id } }' },
+      data: { query: 'query($t:String!){ rows(table:$t) }', variables: { t: 'contact' } },
     })
-    const qd = (await q.json()) as { data?: { contacts?: unknown[] }; errors?: unknown[] }
+    const qd = (await q.json()) as { data?: { rows?: unknown[] }; errors?: unknown[] }
     expect(qd.errors).toBeUndefined()
-    expect(Array.isArray(qd.data?.contacts)).toBe(true)
+    expect(Array.isArray(qd.data?.rows)).toBe(true)
     await api.dispose()
   })
 
@@ -62,7 +62,7 @@ test.describe('Auth refresh (server contract)', () => {
     // GraphQL returns 200 with an Unauthorized error (not data) for a bad bearer.
     const q = await api.post(`${API}/graphql`, {
       headers: { Authorization: `Bearer ${refreshToken}`, 'Content-Type': 'application/json' },
-      data: { query: '{ contacts { id } }' },
+      data: { query: 'query($t:String!){ rows(table:$t) }', variables: { t: 'contact' } },
     })
     const qd = (await q.json()) as { data: unknown; errors?: Array<{ message: string }> }
     expect(qd.data).toBeNull()

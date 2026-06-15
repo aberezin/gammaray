@@ -63,8 +63,18 @@ hold the detailed argument for individual decisions.
   field sync/merge. Enforced integrity + cross-collection ordering deferred.
 - [ADR 0006 — Server-side transactional batch sync](./docs/adr/0006-server-side-batch-sync.md):
   one `pushBatch` transaction with deferrable FKs + FK-graph topo ordering;
-  applied-set atomic, conflicts/rejects isolated. Notes a known self-reference /
-  cycle limitation and its fix path.
+  applied-set atomic, conflicts/rejects isolated. Self-reference / cycle handling
+  resolved (validate against DB ∪ batch).
+- [ADR 0007 — Many-to-many via a join table + virtual MultiReference field](./docs/adr/0007-many-to-many-virtual-fields.md):
+  the join row is a first-class type-A row (two references, multi-parent); the
+  relation surfaces as a virtual field the UI renders and the page materializes.
+- [ADR 0008 — Token refresh + a sync-health "suspect" guard](./docs/adr/0008-token-refresh-and-sync-health.md):
+  stateless refresh tokens + per-request fresh token; any server error flips the
+  app to read-only with recovery actions. Notes a repair-process follow-up.
+- [ADR 0009 — Generic descriptor-driven server engine, JSON read/live transport](./docs/adr/0009-generic-server-engine-json-transport.md):
+  one RowRegistry + generic `rows`/`rowUpdated` over a JSON scalar + a generic
+  flat applier; retires the per-table stacks. Contacts' revisions/merge/conflict
+  stay bespoke (Phase 2).
 
 ## Performance & Capacity (load testing)
 

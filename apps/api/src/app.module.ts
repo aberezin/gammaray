@@ -6,10 +6,7 @@ import { AuthModule } from './auth/auth.module'
 import { UsersModule } from './users/users.module'
 import { NotesModule } from './notes/notes.module'
 import { ContactsModule } from './contacts/contacts.module'
-import { CompaniesModule } from './companies/companies.module'
-import { CategoriesModule } from './categories/categories.module'
-import { TagsModule } from './tags/tags.module'
-import { ContactTagsModule } from './contact-tags/contact-tags.module'
+import { EngineModule } from './engine/engine.module'
 import { BatchModule } from './batch/batch.module'
 import { SyncModule } from './sync/sync.module'
 
@@ -53,10 +50,7 @@ import { SyncModule } from './sync/sync.module'
     UsersModule,
     NotesModule,
     ContactsModule,
-    CompaniesModule,
-    CategoriesModule,
-    TagsModule,
-    ContactTagsModule,
+    EngineModule,
     BatchModule,
     SyncModule,
   ],

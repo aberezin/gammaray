@@ -1,34 +1,10 @@
 import { Injectable } from '@nestjs/common'
 import { DataSource, EntityManager } from 'typeorm'
 import { FieldKind } from '@gammaray/core'
-import {
-  contactDescriptor,
-  companyDescriptor,
-  categoryDescriptor,
-  tagDescriptor,
-  contactTagDescriptor,
-  dependencyOrder,
-  type TableDescriptor,
-} from '@gammaray/core'
-import { ContactsService } from '../contacts/contacts.service'
-import { CompaniesService } from '../companies/companies.service'
-import { CategoriesService } from '../categories/categories.service'
-import { TagsService } from '../tags/tags.service'
-import { ContactTagsService } from '../contact-tags/contact-tags.service'
+import { RowRegistry } from '../engine/row-registry'
+import { projectToDescriptor } from '../engine/project'
 import { SyncBroker } from '../sync/sync.broker'
-import { ContactModel } from '../contacts/contact.model'
-import { CompanyModel } from '../companies/company.model'
-import { CategoryModel } from '../categories/category.model'
-import { TagModel } from '../tags/tag.model'
-import { ContactTagModel } from '../contact-tags/contact-tag.model'
 import type { ApplyOutcome, RowChangeInput } from './batch.types'
-
-interface RegistryEntry {
-  descriptor: TableDescriptor
-  apply: (manager: EntityManager, change: RowChangeInput, clientId: string) => Promise<ApplyOutcome>
-  existing: (manager: EntityManager, ids: string[]) => Promise<Set<string>>
-  emit: (row: Record<string, unknown>) => void
-}
 
 export interface BatchRowResult {
   table: string
@@ -44,64 +20,18 @@ interface RefField {
   table: string
 }
 
-// Applies a batch of row changes atomically. Referential integrity is validated
-// against DB ∪ batch (so a row may reference another row created in the same
-// batch, in any order — including self-references and cycles), and confirmed by
-// the DEFERRABLE constraints at commit.
+// Applies a batch of row changes atomically. Tables are resolved through the
+// RowRegistry (the generic engine), so this code is table-agnostic. Referential
+// integrity is validated against DB ∪ batch (so a row may reference another row
+// created in the same batch, in any order — including self-references and
+// cycles), and confirmed by the DEFERRABLE constraints at commit.
 @Injectable()
 export class BatchService {
-  private readonly registry: Record<string, RegistryEntry>
-  private readonly tableOrder: string[]
-
   constructor(
     private readonly dataSource: DataSource,
-    private readonly contacts: ContactsService,
-    private readonly companies: CompaniesService,
-    private readonly categories: CategoriesService,
-    private readonly tags: TagsService,
-    private readonly contactTags: ContactTagsService,
+    private readonly registry: RowRegistry,
     private readonly broker: SyncBroker,
-  ) {
-    this.registry = {
-      company: {
-        descriptor: companyDescriptor,
-        apply: (m, c, cid) => this.companies.applyCompanyChange(m, c, cid),
-        existing: (m, ids) => this.companies.existingIds(m, ids),
-        emit: (row) => this.broker.emitCompany(row as unknown as CompanyModel),
-      },
-      contact: {
-        descriptor: contactDescriptor,
-        apply: (m, c, cid) => this.contacts.applyContactChange(m, c, cid),
-        existing: (m, ids) => this.contacts.existingIds(m, ids),
-        emit: (row) => this.broker.emitContact(row as unknown as ContactModel),
-      },
-      category: {
-        descriptor: categoryDescriptor,
-        apply: (m, c, cid) => this.categories.applyCategoryChange(m, c, cid),
-        existing: (m, ids) => this.categories.existingIds(m, ids),
-        emit: (row) => this.broker.emitCategory(row as unknown as CategoryModel),
-      },
-      tag: {
-        descriptor: tagDescriptor,
-        apply: (m, c, cid) => this.tags.applyTagChange(m, c, cid),
-        existing: (m, ids) => this.tags.existingIds(m, ids),
-        emit: (row) => this.broker.emitTag(row as unknown as TagModel),
-      },
-      contact_tag: {
-        descriptor: contactTagDescriptor,
-        apply: (m, c, cid) => this.contactTags.applyContactTagChange(m, c, cid),
-        existing: (m, ids) => this.contactTags.existingIds(m, ids),
-        emit: (row) => this.broker.emitContactTag(row as unknown as ContactTagModel),
-      },
-    }
-    this.tableOrder = dependencyOrder([
-      companyDescriptor,
-      contactDescriptor,
-      categoryDescriptor,
-      tagDescriptor,
-      contactTagDescriptor,
-    ])
-  }
+  ) {}
 
   async pushBatch(changes: RowChangeInput[], clientId: string): Promise<BatchRowResult[]> {
     const results: BatchRowResult[] = []
@@ -118,7 +48,7 @@ export class BatchService {
       const ordered = [...changes].sort((a, b) => this.rank(a.table) - this.rank(b.table))
       for (const change of ordered) {
         const key = `${change.table}:${change.id}`
-        const entry = this.registry[change.table]
+        const entry = this.registry.get(change.table)
         if (!entry) {
           results.push({ table: change.table, id: change.id, status: 'REJECTED', reason: `unknown table: ${change.table}` })
           continue
@@ -137,12 +67,13 @@ export class BatchService {
           reason: outcome.reason ?? null,
         })
         if (outcome.status === 'APPLIED' && outcome.emit) {
-          toEmit.push({ table: change.table, row: clean(outcome.emit) as Record<string, unknown> })
+          const row = projectToDescriptor(entry.descriptor, clean(outcome.emit) as Record<string, unknown>)
+          toEmit.push({ table: change.table, row })
         }
       }
     })
 
-    for (const e of toEmit) this.registry[e.table]?.emit(e.row)
+    for (const e of toEmit) this.broker.emitRow(e.table, e.row)
     return results
   }
 
@@ -171,7 +102,7 @@ export class BatchService {
 
     const willExist = new Set(batchKeys)
     for (const [table, ids] of externalByTable) {
-      const present = (await this.registry[table]?.existing(manager, [...ids])) ?? new Set()
+      const present = (await this.registry.get(table)?.existing(manager, [...ids])) ?? new Set()
       for (const id of present) willExist.add(`${table}:${id}`)
     }
 
@@ -197,7 +128,7 @@ export class BatchService {
   }
 
   private refFields(table: string): RefField[] {
-    const descriptor = this.registry[table]?.descriptor
+    const descriptor = this.registry.get(table)?.descriptor
     if (!descriptor) return []
     return descriptor.fields
       .filter((f) => f.kind === FieldKind.Reference && f.references)
@@ -205,7 +136,7 @@ export class BatchService {
   }
 
   private rank(table: string): number {
-    const i = this.tableOrder.indexOf(table)
+    const i = this.registry.order.indexOf(table)
     return i === -1 ? Number.MAX_SAFE_INTEGER : i
   }
 }
