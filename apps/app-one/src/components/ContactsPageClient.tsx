@@ -247,12 +247,23 @@ export function ContactsPageClient({ accessToken }: Props) {
           <input
             value={newCompany}
             onChange={(e) => setNewCompany(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleAddCompany() }}
             placeholder="New company name"
             style={{ fontSize: 13, padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, outline: 'none' }}
           />
           <button
             onClick={() => void handleAddCompany()}
-            style={{ fontSize: 13, padding: '6px 12px', background: '#6b7280', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
+            disabled={!newCompany.trim()}
+            style={{
+              fontSize: 13,
+              padding: '6px 12px',
+              background: newCompany.trim() ? '#8b5cf6' : '#e5e7eb',
+              color: newCompany.trim() ? '#fff' : '#9ca3af',
+              border: 'none',
+              borderRadius: 6,
+              cursor: newCompany.trim() ? 'pointer' : 'not-allowed',
+              fontWeight: 500,
+            }}
           >
             Add company
           </button>
@@ -267,6 +278,22 @@ export function ContactsPageClient({ accessToken }: Props) {
           <Link href="/" style={{ fontSize: 13, color: '#3b82f6' }}>← Notes</Link>
         </div>
       </header>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 500 }}>Companies:</span>
+        {companies.length === 0 ? (
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>none yet — add one above</span>
+        ) : (
+          companies.map((c) => (
+            <span
+              key={c.id}
+              style={{ fontSize: 12, color: '#5b21b6', background: '#ede9fe', padding: '2px 8px', borderRadius: 999 }}
+            >
+              {c.name}
+            </span>
+          ))
+        )}
+      </div>
 
       {conflict && (
         <RecordConflictBanner
