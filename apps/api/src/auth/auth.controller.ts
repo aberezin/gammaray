@@ -11,6 +11,11 @@ class AuthDto {
   password!: string
 }
 
+class RefreshDto {
+  @IsString()
+  refreshToken!: string
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -24,5 +29,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: AuthDto) {
     return this.auth.login(dto.email, dto.password)
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  refresh(@Body() dto: RefreshDto) {
+    return this.auth.refresh(dto.refreshToken)
   }
 }
