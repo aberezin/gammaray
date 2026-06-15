@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql'
+import { Resolver, Query, Mutation, Subscription, Args, Int } from '@nestjs/graphql'
 import { UseGuards } from '@nestjs/common'
 import { ContactEntity, ContactRevisionEntity } from '@gammaray/database'
 import { ContactsService } from './contacts.service'
@@ -9,11 +9,15 @@ import {
   ContactConflictResult,
 } from './contact.model'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import { SyncBroker } from '../sync/sync.broker'
 
 @Resolver(() => ContactModel)
 @UseGuards(JwtAuthGuard)
 export class ContactsResolver {
-  constructor(private readonly service: ContactsService) {}
+  constructor(
+    private readonly service: ContactsService,
+    private readonly broker: SyncBroker,
+  ) {}
 
   @Query(() => [ContactModel])
   async contacts(): Promise<ContactModel[]> {
@@ -45,6 +49,8 @@ export class ContactsResolver {
     out.contact = r.contact ? toContactModel(r.contact) : null
     out.serverVersion = r.serverVersion ?? null
     out.serverData = r.serverData ? JSON.stringify(r.serverData) : null
+    // Broadcast accepted changes (not conflicts) so open clients update live.
+    if (out.contact) this.broker.emitContact(out.contact)
     return out
   }
 
@@ -53,7 +59,15 @@ export class ContactsResolver {
     @Args('input') input: ContactInput,
     @Args('clientId') clientId: string,
   ): Promise<ContactModel> {
-    return toContactModel(await this.service.resolveContactConflict(input, clientId))
+    const resolved = toContactModel(await this.service.resolveContactConflict(input, clientId))
+    this.broker.emitContact(resolved)
+    return resolved
+  }
+
+  @Subscription(() => ContactModel)
+  contactUpdated() {
+    // Contacts are a shared dataset — a single global channel, no per-user filter.
+    return this.broker.contactAsyncIterator()
   }
 }
 

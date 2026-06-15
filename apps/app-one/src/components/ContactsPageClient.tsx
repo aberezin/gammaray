@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { RecordList, RecordForm, RecordConflictBanner } from '@gammaray/ui'
+import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle } from '@gammaray/ui'
 import { contactDescriptor, type RowRecord, type ContactRevisionDto } from '@gammaray/core'
 import { getDatabase } from '@/lib/rxdb'
 import { startContactReplication, resolveContact } from '@/lib/contacts-sync'
@@ -35,40 +35,65 @@ export function ContactsPageClient({ accessToken }: Props) {
   const [editing, setEditing] = useState(false)
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({})
   const [conflict, setConflict] = useState<ContactConflict | null>(null)
+  const [offline, setOffline] = useState(false)
   const gqlClient = useRef(makeGqlClient(accessToken))
   const clientId = useRef<string>(crypto.randomUUID())
   const replicationRef = useRef<ReturnType<typeof startContactReplication> | null>(null)
 
-  // Load + replicate the contact collection (pull-only for the Read increment).
+  // Local subscription — always on, so the list reflects local data even offline.
   useEffect(() => {
     let active = true
     let sub: { unsubscribe: () => void } | undefined
-    let replication: ReturnType<typeof startContactReplication> | undefined
+    async function init() {
+      const db = await getDatabase()
+      if (!active) return
+      sub = db.contact.find().$.subscribe((docs) => {
+        setRecords(docs.map((d) => d.toJSON() as RowRecord))
+      })
+    }
+    void init()
+    return () => {
+      active = false
+      sub?.unsubscribe()
+    }
+  }, [])
+
+  // Replication (pull + push + live WS stream) — runs only while online, and
+  // restarts on offline→online so edits made offline push (and can conflict).
+  useEffect(() => {
+    if (offline) return
+    let active = true
+    let started: ReturnType<typeof startContactReplication> | undefined
 
     async function init() {
       const db = await getDatabase()
       if (!active) return
-      replication = startContactReplication(
+      started = startContactReplication(
         db.contact,
         gqlClient.current,
+        accessToken,
         clientId.current,
         ({ contactId, serverData, clientData }) =>
           setConflict({ contactId, mine: clientData, theirs: serverData }),
       )
-      replicationRef.current = replication
-      sub = db.contact.find().$.subscribe((docs) => {
-        setRecords(docs.map((d) => d.toJSON() as RowRecord))
-      })
+      if (!active) {
+        void started.replication.cancel()
+        void started.wsClient.dispose()
+        return
+      }
+      replicationRef.current = started
     }
 
     void init()
     return () => {
       active = false
-      sub?.unsubscribe()
-      if (replication) void replication.cancel()
+      if (started) {
+        void started.replication.cancel()
+        void started.wsClient.dispose()
+      }
       replicationRef.current = null
     }
-  }, [])
+  }, [offline])
 
   const selected = records.find((r) => r.id === selectedId) ?? null
   const selectedVersion = selected ? Number(selected.version ?? 0) : null
@@ -174,7 +199,7 @@ export function ContactsPageClient({ accessToken }: Props) {
     }
     await resolveContact(gqlClient.current, input, clientId.current)
     setConflict(null)
-    replicationRef.current?.reSync()
+    replicationRef.current?.replication.reSync()
   }
 
   return (
@@ -188,6 +213,7 @@ export function ContactsPageClient({ accessToken }: Props) {
           >
             New contact
           </button>
+          <OfflineToggle offline={offline} onToggle={setOffline} />
           <Link href="/" style={{ fontSize: 13, color: '#3b82f6' }}>← Notes</Link>
         </div>
       </header>

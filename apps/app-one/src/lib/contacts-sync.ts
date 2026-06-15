@@ -1,16 +1,20 @@
 import { replicateRxCollection } from 'rxdb/plugins/replication'
+import { createClient } from 'graphql-ws'
 import { Observable } from 'rxjs'
 import type { RxCollection } from 'rxdb'
 import type { GraphQLClient } from 'graphql-request'
 import { contactDescriptor, type RowRecord } from '@gammaray/core'
 
-// Pull the full set (read), and push local creates (create). Update/Delete and
-// a live pull stream come in later increments. The pull query's field list is
-// derived from the descriptor — schema-driven.
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:3001'
+
+// Pull the full set, push local writes, and receive live changes from other
+// clients over a WebSocket subscription. The field list is derived from the
+// descriptor — schema-driven.
 const PULL_FIELDS = contactDescriptor.fields.map((f) => f.name).join(' ')
-// `deleted` is a system tombstone field (not in the descriptor); pull it so
+// `deleted` is a system tombstone field (not in the descriptor); carry it so
 // deletions propagate, then map it onto RxDB's native `_deleted`.
 const PULL_CONTACTS = `query { contacts { ${PULL_FIELDS} deleted } }`
+const CONTACT_UPDATED_SUB = `subscription { contactUpdated { ${PULL_FIELDS} deleted } }`
 
 const PUSH_CONTACT = `
   mutation PushContact($input: ContactInput!, $expectedVersion: Int!, $clientId: String!) {
@@ -60,13 +64,19 @@ export async function resolveContact(
 export function startContactReplication(
   collection: RxCollection<RowRecord>,
   gqlClient: GraphQLClient,
+  accessToken: string,
   clientId: string,
   onConflict?: ContactConflictHandler,
 ) {
-  return replicateRxCollection<RowRecord, { pulledAt: string }>({
+  const wsClient = createClient({
+    url: `${WS_URL}/graphql`,
+    connectionParams: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  const replication = replicateRxCollection<RowRecord, { pulledAt: string }>({
     collection,
     replicationIdentifier: 'contacts-gql',
-    live: true, // keep watching for local creates to push
+    live: true, // keep watching for local writes to push
     retryTime: 5_000,
     pull: {
       batchSize: 1000,
@@ -81,8 +91,27 @@ export function startContactReplication(
         // Fewer docs than batchSize tells RxDB the pull is complete.
         return { documents, checkpoint: { pulledAt: new Date().toISOString() } }
       },
-      // No server-pushed live stream for contacts yet; never emits.
-      stream$: new Observable<never>(() => {}),
+      // Live changes from any client arrive over the global contactUpdated
+      // subscription and flow straight into the local store.
+      stream$: new Observable((subscriber) => {
+        const unsub = wsClient.subscribe<{ contactUpdated: RowRecord & { deleted?: boolean } }>(
+          { query: CONTACT_UPDATED_SUB },
+          {
+            next: ({ data }) => {
+              const c = data?.contactUpdated
+              if (!c) return
+              const { deleted, ...rest } = c
+              subscriber.next({
+                documents: [{ ...rest, _deleted: !!deleted }],
+                checkpoint: { pulledAt: new Date().toISOString() },
+              })
+            },
+            error: (err) => subscriber.error(err),
+            complete: () => subscriber.complete(),
+          },
+        )
+        return unsub
+      }),
     },
     push: {
       batchSize: 1,
@@ -109,10 +138,7 @@ export function startContactReplication(
         })
         const result = data.pushContact
 
-        // Delete: the server soft-deleted the row; keep the local tombstone.
-        // (Delete-vs-edit conflict handling is a follow-up.)
-        if (input.deleted) return []
-
+        // Conflict first — applies to a stale edit OR a stale delete.
         if (result.conflict && result.serverData != null) {
           const serverData = JSON.parse(result.serverData) as Record<string, unknown>
           // Capture the client's attempted row (incl. its delete flag) before
@@ -130,6 +156,9 @@ export function startContactReplication(
           return [{ ...doc, ...srvRest, _deleted: srvDeleted === true }]
         }
 
+        // Delete success: the server soft-deleted the row; keep the local tombstone.
+        if (input.deleted) return []
+
         // Success: return the server row so RxDB reconciles the local version.
         if (result.contact) {
           return [{ ...doc, ...result.contact, _deleted: false }]
@@ -138,4 +167,6 @@ export function startContactReplication(
       },
     },
   })
+
+  return { replication, wsClient }
 }

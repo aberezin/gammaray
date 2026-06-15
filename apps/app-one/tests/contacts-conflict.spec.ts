@@ -1,9 +1,9 @@
 import { test, expect, Browser } from '@playwright/test'
 import { register, uniqueEmail } from './helpers'
 
-// Type-A generalization, increment 3 (Update), part 2: concurrent edits to the
-// same row. With the default WholeRow strategy, the stale writer conflicts; the
-// user resolves (keep mine), and the dataset converges for everyone.
+// Type-A update, part 2: concurrent edits to the same row. With live sync on, a
+// conflict is produced by editing OFFLINE: B edits while disconnected, so it
+// doesn't receive A's change, and reconnects with a stale version → conflict.
 test.describe('Contacts (type-A update conflict)', () => {
   test('concurrent edits conflict and resolve with "keep mine"', async ({ browser }: { browser: Browser }) => {
     const stamp = Date.now()
@@ -24,25 +24,27 @@ test.describe('Contacts (type-A update conflict)', () => {
     await a.getByRole('button', { name: 'Save' }).click()
     await expect(a.getByText(surname)).toBeVisible({ timeout: 8_000 })
 
-    // B loads it (at v1) and selects it.
+    // B loads it (v1), selects it, then goes offline so it stays stale.
     const ctxB = await browser.newContext()
     const b = await ctxB.newPage()
     await register(b, uniqueEmail('cf-b'))
     await b.goto('/contacts')
     await expect(b.getByText(surname)).toBeVisible({ timeout: 10_000 })
     await b.getByText(surname).click()
+    await b.getByRole('button', { name: /Online/ }).click() // go offline
 
-    // A edits first → server advances to v2.
+    // A edits first → server advances to v2 (history confirms the commit).
     await a.getByText(surname).click()
     await a.getByRole('button', { name: 'Edit' }).click()
     await a.getByLabel('Email').fill(aEmail)
     await a.getByRole('button', { name: 'Save' }).click()
-    await expect(a.getByText(aEmail)).toBeVisible({ timeout: 8_000 })
+    await expect(a.getByText('v2').first()).toBeVisible({ timeout: 8_000 })
 
-    // B edits from its stale v1 → conflict.
+    // B edits offline, then reconnects → its stale push conflicts.
     await b.getByRole('button', { name: 'Edit' }).click()
     await b.getByLabel('Email').fill(bEmail)
     await b.getByRole('button', { name: 'Save' }).click()
+    await b.getByRole('button', { name: /Offline/ }).click() // go online
     await expect(b.getByText('Update conflict')).toBeVisible({ timeout: 10_000 })
 
     // B keeps its version → resolves; banner clears and B shows its value.
