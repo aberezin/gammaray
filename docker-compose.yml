@@ -37,5 +37,21 @@ services:
       - ./apps/api/src:/app/apps/api/src
       - ./packages:/app/packages
 
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/app-one/Dockerfile
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - ./apps/app-one/src:/app/apps/app-one/src
+      - ./packages:/app/packages
+
 volumes:
   postgres_data:
