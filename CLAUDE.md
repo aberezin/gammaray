@@ -114,17 +114,28 @@ Auth is fully stateless JWT. No server-side session storage.
 
 All services (PostgreSQL, API, frontend) are containerized with `docker compose`. The setup uses **Colima** as the container runtime on macOS (not Docker Desktop).
 
-**Current state:**
-- All services run in containers and work correctly within the Docker internal network
-- Full-stack integration verified (frontend requests reach the API, which accesses the database)
-- Port forwarding from containers to host (macOS) is currently broken on this machine's Colima setup
-- Workaround: run frontend locally with `pnpm --filter @gammaray/app-one dev` for Chrome testing; API/Postgres run containerized
+**Recommended dev setup (verified working):**
+
+Run backend in containers, frontend locally:
+```bash
+# Terminal 1: Backend services
+docker compose up -d              # API on :3001, Postgres on :5432
+
+# Terminal 2: Frontend for Chrome testing
+pnpm --filter @gammaray/app-one dev  # Frontend on :3000
+```
+
+Frontend is pre-configured to reach the API at `http://localhost:3001`. Full integration works end-to-end.
+
+**Why this works:**
+- API port 3001 is accessible from host via Colima port forwarding ✓
+- Frontend port 3000 has forwarding issues (Colima limitation) but runs locally fine ✓
+- Frontend config has `NEXT_PUBLIC_API_URL=http://localhost:3001` ✓
 
 **Colima specifics (see LOCAL.md):**
-- Start with `colima start` (auto-starts on most setups)
-- Check status: `colima status`
-- Networking issue: localhost:3000 hangs; containers bind to 0.0.0.0:3000 but host can't reach it
-- Possible fixes: Colima config (`~/.colima/settings.yml`), restart (`colima stop && colima start`), or access via VM IP
+- Runtime: Colima (not Docker Desktop)
+- Port forwarding: IPv6 ports work (3001), IPv4 ports hang (3000) — likely VM networking layer
+- Attempted fixes: `address: true`, `mode: bridged` — neither resolved the 3000 forwarding issue
 
 **Dockerfiles:**
 - `apps/api/Dockerfile` — NestJS on :3001, runs migrations on startup
