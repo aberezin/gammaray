@@ -101,6 +101,26 @@ Auth is fully stateless JWT. No server-side session storage.
 | `packages/database/src/migrations/` | TypeORM migration files |
 | `platform-architecture.md` | Architecture decision log — update when decisions change |
 
+## Containerization
+
+All services (PostgreSQL, API, frontend) are containerized with `docker compose`. The setup uses **Colima** as the container runtime on macOS (not Docker Desktop).
+
+**Current state:**
+- All services run in containers and work correctly within the Docker internal network
+- Full-stack integration verified (frontend requests reach the API, which accesses the database)
+- Port forwarding from containers to host (macOS) is currently broken on this machine's Colima setup
+- Workaround: run frontend locally with `pnpm --filter @gammaray/app-one dev` for Chrome testing; API/Postgres run containerized
+
+**Colima specifics (see LOCAL.md):**
+- Start with `colima start` (auto-starts on most setups)
+- Check status: `colima status`
+- Networking issue: localhost:3000 hangs; containers bind to 0.0.0.0:3000 but host can't reach it
+- Possible fixes: Colima config (`~/.colima/settings.yml`), restart (`colima stop && colima start`), or access via VM IP
+
+**Dockerfiles:**
+- `apps/api/Dockerfile` — NestJS on :3001, runs migrations on startup
+- `apps/app-one/Dockerfile` — Next.js on :3000, binds to 0.0.0.0 for external access
+
 ## SDLC
 
 ### Branching
