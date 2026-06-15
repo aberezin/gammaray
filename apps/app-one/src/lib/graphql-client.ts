@@ -17,9 +17,12 @@ export function makeGqlClient(getToken: TokenGetter = getAccessToken): GraphQLCl
         ...req,
         headers: {
           ...req.headers,
-          // Keep an explicit JSON content-type: without it Apollo's CSRF
-          // prevention rejects the request (the default header is otherwise lost
-          // once we supply a requestMiddleware).
+          // Keep an explicit JSON content-type. graphql-request normally adds
+          // this, but the default is dropped once we supply a requestMiddleware.
+          // Apollo's CSRF prevention then rejects the request (400): a request
+          // without a "non-simple" content-type could have been a no-preflight
+          // cross-site POST, so Apollo requires application/json (or an
+          // apollo-require-preflight header) to prove it isn't.
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
