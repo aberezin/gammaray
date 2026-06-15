@@ -45,10 +45,12 @@ changes), re-run the relevant load tests and compare against
 [`load-tests/RESULTS.md`](./load-tests/RESULTS.md). If the results differ
 **substantially** — a meaningful shift in throughput, latency percentiles,
 connection capacity, or any new errors/conflicts — add a dated entry to
-`RESULTS.md` (using its template, with commit, machine, and metrics) and update
-the headline summary in `load-tests/README.md`. Keeping the log current is what
+[`RESULTS.md`](./load-tests/RESULTS.md) (using its template, with commit,
+machine, and metrics) and update the headline summary in
+[`load-tests/README.md`](./load-tests/README.md). Keeping the log current is what
 lets the next person or agent tell an intentional change from a regression.
 
 ### See Also
-platform-architecture.md
+- [platform-architecture.md](./platform-architecture.md) — architecture decision log + ADR index
+- [docs/erd.md](./docs/erd.md) — entity-relationship diagram of the database schema
 

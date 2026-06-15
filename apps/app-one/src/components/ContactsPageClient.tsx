@@ -12,7 +12,6 @@ import {
   type ContactRevisionDto,
 } from '@gammaray/core'
 import { getDatabase } from '@/lib/rxdb'
-import { resolveContact } from '@/lib/contacts-sync'
 import { startRowReplication, BatchCoordinator } from '@/lib/batch-sync'
 import { makeGqlClient } from '@/lib/graphql-client'
 import { getAccessToken, primeToken } from '@/lib/token'
@@ -28,11 +27,17 @@ interface Props {
   accessToken: string
 }
 
+// Version history via the generic engine (rowRevisions returns JSON rows).
 const REVISIONS_QUERY = `
-  query ContactRevisions($contactId: String!) {
-    contactRevisions(contactId: $contactId) {
-      id version clientId conflictStatus createdAt data
-    }
+  query RowRevisions($table: String!, $rowId: String!) {
+    rowRevisions(table: $table, rowId: $rowId)
+  }
+`
+
+// Resolve a detected conflict with the chosen row, via the generic engine.
+const RESOLVE_CONFLICT = `
+  mutation ResolveRowConflict($table: String!, $row: JSON!, $clientId: String!) {
+    resolveRowConflict(table: $table, row: $row, clientId: $clientId)
   }
 `
 
@@ -168,9 +173,9 @@ export function ContactsPageClient({ accessToken }: Props) {
     }
     let active = true
     gqlClient.current
-      .request<{ contactRevisions: ContactRevisionDto[] }>(REVISIONS_QUERY, { contactId: selectedId })
+      .request<{ rowRevisions: ContactRevisionDto[] }>(REVISIONS_QUERY, { table: 'contact', rowId: selectedId })
       .then((d) => {
-        if (active) setRevisions(d.contactRevisions)
+        if (active) setRevisions(d.rowRevisions)
       })
       .catch(() => {
         /* ignore */
@@ -318,16 +323,21 @@ export function ContactsPageClient({ accessToken }: Props) {
   // store reflects the resolved server state.
   async function resolveWith(row: Record<string, unknown>) {
     if (!conflict) return
-    const input = {
+    const chosen = {
       id: conflict.contactId,
       firstName: String(row.firstName ?? ''),
       lastName: String(row.lastName ?? ''),
       email: String(row.email ?? ''),
       phone: String(row.phone ?? ''),
+      companyId: row.companyId ? String(row.companyId) : null,
       // The chosen side may be a deletion (accept) or not (resurrect).
       deleted: row.deleted === true,
     }
-    await resolveContact(gqlClient.current, input, clientId.current)
+    await gqlClient.current.request(RESOLVE_CONFLICT, {
+      table: 'contact',
+      row: chosen,
+      clientId: clientId.current,
+    })
     setConflict(null)
     replicationRef.current?.replication.reSync()
   }

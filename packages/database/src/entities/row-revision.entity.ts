@@ -3,26 +3,25 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  ManyToOne,
-  JoinColumn,
+  Index,
 } from 'typeorm'
-import { ContactEntity } from './contact.entity'
 import { ConflictStatus } from '@gammaray/core'
 
-// One row per accepted version of a contact. Unlike the note's single `content`
-// string, a contact revision stores a JSONB snapshot of all fields (`data`),
-// which is what makes a field-aware structural diff possible later.
-@Entity('contact_revisions')
-export class ContactRevisionEntity {
+// One generic revision log for every revisioned type-A table (replaces the
+// per-table contact_revisions). A row is one accepted/detected version of some
+// table's row, identified by (tableName, rowId). `data` is a field-aware JSONB
+// snapshot — the common ancestor that 3-way merge reads.
+@Entity('row_revisions')
+@Index(['tableName', 'rowId', 'version'])
+export class RowRevisionEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string
 
-  @Column({ name: 'contact_id' })
-  contactId!: string
+  @Column({ name: 'table_name' })
+  tableName!: string
 
-  @ManyToOne(() => ContactEntity, (c) => c.revisions, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'contact_id' })
-  contact!: ContactEntity
+  @Column({ name: 'row_id' })
+  rowId!: string
 
   /** Field-aware snapshot of the row at this version. */
   @Column({ type: 'jsonb', default: '{}' })
