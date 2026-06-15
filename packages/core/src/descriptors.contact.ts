@@ -9,8 +9,10 @@ export const contactDescriptor: TableDescriptor = {
   listField: 'contacts',
   identity: { field: 'id', clientGenerated: true },
   // Disjoint field edits auto-merge (3-way against the ancestor); same-field
-  // edits and delete-vs-edit still conflict.
+  // edits and delete-vs-edit still conflict. The ancestor comes from the
+  // revision log, so this table is revisioned.
   mergeStrategy: MergeStrategyKind.DisjointFields,
+  revisioned: true,
   display: { titleFields: ['firstName', 'lastName'] },
   fields: [
     { name: 'id', label: 'ID', kind: FieldKind.Uuid, readOnly: true },

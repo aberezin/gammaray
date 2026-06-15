@@ -5,11 +5,11 @@ import {
   NoteEntity,
   NoteRevisionEntity,
   ContactEntity,
-  ContactRevisionEntity,
   CompanyEntity,
   CategoryEntity,
   TagEntity,
   ContactTagEntity,
+  RowRevisionEntity,
 } from '@gammaray/database'
 
 @Global()
@@ -28,11 +28,11 @@ import {
           NoteEntity,
           NoteRevisionEntity,
           ContactEntity,
-          ContactRevisionEntity,
           CompanyEntity,
           CategoryEntity,
           TagEntity,
           ContactTagEntity,
+          RowRevisionEntity,
         ],
         migrations: [],
         synchronize: false,

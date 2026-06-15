@@ -75,6 +75,13 @@ export interface TableDescriptor {
   fields: FieldDescriptor[]
   /** Reconciliation policy. Dormant until UPDATE; defaults to the safe WholeRow. */
   mergeStrategy: MergeStrategyKind
+  /**
+   * Whether the engine keeps a version history for this table in `row_revisions`.
+   * Required for 3-way merge (DisjointFields/Custom need the common ancestor) and
+   * for the conflict UI's history view. WholeRow tables can stay non-revisioned
+   * (a version mismatch is simply a conflict — no ancestor needed). Default false.
+   */
+  revisioned?: boolean
   /** Fields used to summarize a row in a list/title. */
   display: { titleFields: string[] }
 }

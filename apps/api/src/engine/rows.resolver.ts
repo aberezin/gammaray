@@ -1,4 +1,4 @@
-import { Resolver, Query, Subscription, Args } from '@nestjs/graphql'
+import { Resolver, Query, Mutation, Subscription, Args } from '@nestjs/graphql'
 import { UseGuards, BadRequestException } from '@nestjs/common'
 import GraphQLJSON from 'graphql-type-json'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
@@ -24,6 +24,33 @@ export class RowsResolver {
     const entry = this.registry.get(table)
     if (!entry) throw new BadRequestException(`unknown table: ${table}`)
     return this.generic.listRows(entry.descriptor, entry.entity)
+  }
+
+  // A row's version history (revisioned tables only; empty otherwise). Replaces
+  // the bespoke contactRevisions query.
+  @Query(() => [GraphQLJSON], { name: 'rowRevisions' })
+  async rowRevisions(
+    @Args('table') table: string,
+    @Args('rowId') rowId: string,
+  ): Promise<Record<string, unknown>[]> {
+    if (!this.registry.has(table)) throw new BadRequestException(`unknown table: ${table}`)
+    return this.generic.getRevisions(table, rowId)
+  }
+
+  // Resolve a detected conflict with the user's chosen row. Replaces the bespoke
+  // resolveContactConflict mutation. Named resolveRowConflict to avoid colliding
+  // with the notes module's own resolveConflict mutation.
+  @Mutation(() => GraphQLJSON, { name: 'resolveRowConflict' })
+  async resolveRowConflict(
+    @Args('table') table: string,
+    @Args({ name: 'row', type: () => GraphQLJSON }) row: Record<string, unknown>,
+    @Args('clientId') clientId: string,
+  ): Promise<Record<string, unknown>> {
+    const entry = this.registry.get(table)
+    if (!entry) throw new BadRequestException(`unknown table: ${table}`)
+    const resolved = await this.generic.resolveConflict(table, entry.descriptor, entry.entity, row, clientId)
+    this.broker.emitRow(table, resolved)
+    return resolved
   }
 
   @Subscription(() => GraphQLJSON, {

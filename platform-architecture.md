@@ -73,8 +73,11 @@ hold the detailed argument for individual decisions.
   app to read-only with recovery actions. Notes a repair-process follow-up.
 - [ADR 0009 — Generic descriptor-driven server engine, JSON read/live transport](./docs/adr/0009-generic-server-engine-json-transport.md):
   one RowRegistry + generic `rows`/`rowUpdated` over a JSON scalar + a generic
-  flat applier; retires the per-table stacks. Contacts' revisions/merge/conflict
-  stay bespoke (Phase 2).
+  flat applier; retires the per-table read/write stacks (Phase 1).
+- [ADR 0010 — Generic revisions, 3-way merge, and conflict resolution](./docs/adr/0010-generic-revisions-merge-conflict.md):
+  a single `row_revisions` table + a `revisioned` descriptor flag fold contacts'
+  history/merge/conflict into the generic applier; `resolveRowConflict` +
+  `rowRevisions`. No bespoke server code remains (Phase 2).
 
 ## Performance & Capacity (load testing)
 

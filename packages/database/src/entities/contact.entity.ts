@@ -4,9 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  OneToMany,
 } from 'typeorm'
-import { ContactRevisionEntity } from './contact-revision.entity'
 
 // First type-A table: a flat contact row, no foreign keys, shared across clients.
 // The primary key is client-generated (offline-first create), so PrimaryColumn —
@@ -51,7 +49,4 @@ export class ContactEntity {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date
-
-  @OneToMany(() => ContactRevisionEntity, (rev) => rev.contact)
-  revisions?: ContactRevisionEntity[]
 }

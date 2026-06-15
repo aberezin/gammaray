@@ -5,7 +5,6 @@ import { DatabaseModule } from './database/database.module'
 import { AuthModule } from './auth/auth.module'
 import { UsersModule } from './users/users.module'
 import { NotesModule } from './notes/notes.module'
-import { ContactsModule } from './contacts/contacts.module'
 import { EngineModule } from './engine/engine.module'
 import { BatchModule } from './batch/batch.module'
 import { SyncModule } from './sync/sync.module'
@@ -49,7 +48,6 @@ import { SyncModule } from './sync/sync.module'
     AuthModule,
     UsersModule,
     NotesModule,
-    ContactsModule,
     EngineModule,
     BatchModule,
     SyncModule,
