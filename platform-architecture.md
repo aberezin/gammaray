@@ -100,6 +100,23 @@ snapshot-and-compact, or archive to cold storage. Note retention likely belongs
 Open question: how truncation interacts with 3-way merge, which relies on the
 common-ancestor revision still existing.
 
+## Engineering backlog / TODOs
+
+Non-feature maintenance and tooling tasks, tracked here until scheduled.
+
+- **Update Next.js to the latest version.** `apps/app-one` is on Next.js 15
+  (App Router). Bump to the latest release, review the changelog/codemods for
+  breaking changes, and re-run the e2e suite. Watch for App Router, caching, and
+  `next-auth`/Auth.js v5 compatibility shifts.
+- **Add a TypeScript LSP to Claude Code sessions.** Give agent sessions a
+  TypeScript language server so they get go-to-definition, find-references,
+  hover types, and rename across the monorepo — instead of relying on grep + the
+  per-package `tsc --noEmit` lint. Should resolve cross-package types
+  (`@gammaray/core`, `@gammaray/database`, etc.) via the workspace.
+- **Repair process before destructive local reset** (see ADR 0008 / the
+  `TODO(repair)` in `SyncHealthBanner.tsx`): recover unsynced local writes before
+  "Reset local data" wipes the RxDB replica.
+
 ## Notes
 - Two separate frontend applications sharing a single backend
 - Apps communicate through the backend only

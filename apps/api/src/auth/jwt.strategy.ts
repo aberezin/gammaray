@@ -15,6 +15,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    // A refresh token is signed with the same secret but must never authorize an
+    // API call — it is only valid at /auth/refresh.
+    if (payload.type === 'refresh') throw new UnauthorizedException()
     const user = await this.users.findById(payload.sub)
     if (!user) throw new UnauthorizedException()
     return user

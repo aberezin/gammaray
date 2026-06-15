@@ -4,6 +4,8 @@ import { Observable } from 'rxjs'
 import type { RxCollection } from 'rxdb'
 import type { NoteRxDocument, NoteDto, ConflictResultDto } from '@gammaray/core'
 import type { GraphQLClient } from 'graphql-request'
+import { type TokenGetter } from './token'
+import { syncHealth } from '@/store/sync-health.store'
 
 const PULL_NOTE = `
   query {
@@ -46,14 +48,15 @@ export type ConflictHandler = (opts: {
 export function startReplication(
   collection: RxCollection<NoteRxDocument>,
   gqlClient: GraphQLClient,
-  accessToken: string,
+  getToken: TokenGetter,
   clientId: string,
   onConflict: ConflictHandler,
   onPushSuccess?: () => void,
 ) {
   const wsClient = createClient({
     url: `${process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:3001'}/graphql`,
-    connectionParams: { Authorization: `Bearer ${accessToken}` },
+    // Fresh token per (re)connect, so the live stream survives token rotation.
+    connectionParams: async () => ({ Authorization: `Bearer ${await getToken()}` }),
   })
 
   const replication = replicateRxCollection<NoteRxDocument, { id: string; updatedAt: string }>({
@@ -135,6 +138,12 @@ export function startReplication(
         return []
       },
     },
+  })
+
+  // Surface replication transport failures (auth handled by the token getter).
+  replication.error$.subscribe((err) => {
+    const message = (err as { message?: string })?.message ?? 'replication error'
+    if (!/unauthor|401/i.test(message)) syncHealth.markSuspect('server', message)
   })
 
   return { replication, wsClient }

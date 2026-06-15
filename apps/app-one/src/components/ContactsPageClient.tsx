@@ -15,6 +15,8 @@ import { getDatabase } from '@/lib/rxdb'
 import { resolveContact } from '@/lib/contacts-sync'
 import { startRowReplication, BatchCoordinator } from '@/lib/batch-sync'
 import { makeGqlClient } from '@/lib/graphql-client'
+import { getAccessToken, primeToken } from '@/lib/token'
+import { useSyncHealth } from '@/store/sync-health.store'
 
 interface ContactConflict {
   contactId: string
@@ -35,6 +37,9 @@ const REVISIONS_QUERY = `
 `
 
 export function ContactsPageClient({ accessToken }: Props) {
+  primeToken(accessToken)
+  // When sync health is suspect, the local store is untrusted → read-only.
+  const suspect = useSyncHealth((s) => s.status === 'suspect')
   const [records, setRecords] = useState<RowRecord[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [revisions, setRevisions] = useState<ContactRevisionDto[]>([])
@@ -49,7 +54,7 @@ export function ContactsPageClient({ accessToken }: Props) {
   const [tags, setTags] = useState<Array<{ id: string; name: string }>>([])
   const [links, setLinks] = useState<RowRecord[]>([])
   const [newTag, setNewTag] = useState('')
-  const gqlClient = useRef(makeGqlClient(accessToken))
+  const gqlClient = useRef(makeGqlClient())
   const clientId = useRef<string>(crypto.randomUUID())
   const replicationRef = useRef<ReturnType<typeof startRowReplication> | null>(null)
 
@@ -100,10 +105,10 @@ export function ContactsPageClient({ accessToken }: Props) {
           setConflict({ contactId: c.id, mine: c.clientData, theirs: c.serverData })
         }
       })
-      const contactRep = startRowReplication(contactDescriptor, db.contact, gqlClient.current, accessToken, coordinator)
-      const companyRep = startRowReplication(companyDescriptor, db.company, gqlClient.current, accessToken, coordinator)
-      const tagRep = startRowReplication(tagDescriptor, db.tag, gqlClient.current, accessToken, coordinator)
-      const linkRep = startRowReplication(contactTagDescriptor, db.contact_tag, gqlClient.current, accessToken, coordinator)
+      const contactRep = startRowReplication(contactDescriptor, db.contact, gqlClient.current, getAccessToken, coordinator)
+      const companyRep = startRowReplication(companyDescriptor, db.company, gqlClient.current, getAccessToken, coordinator)
+      const tagRep = startRowReplication(tagDescriptor, db.tag, gqlClient.current, getAccessToken, coordinator)
+      const linkRep = startRowReplication(contactTagDescriptor, db.contact_tag, gqlClient.current, getAccessToken, coordinator)
       started = [contactRep, companyRep, tagRep, linkRep]
       if (!active) {
         started.forEach((r) => {
@@ -176,6 +181,7 @@ export function ContactsPageClient({ accessToken }: Props) {
   }, [selectedId, selectedVersion])
 
   function startCreate() {
+    if (suspect) return
     setSelectedId(null)
     setEditing(false)
     setDraft({})
@@ -185,6 +191,7 @@ export function ContactsPageClient({ accessToken }: Props) {
   // Create a company locally (client-minted id). Works offline; the batch
   // coordinator syncs it (and any contact referencing it) on reconnect.
   async function handleAddCompany() {
+    if (suspect) return
     const name = newCompany.trim()
     if (!name) return
     const db = await getDatabase()
@@ -200,6 +207,7 @@ export function ContactsPageClient({ accessToken }: Props) {
 
   // Create a tag locally (client-minted id). Works offline; syncs via the batch.
   async function handleAddTag() {
+    if (suspect) return
     const name = newTag.trim()
     if (!name) return
     const db = await getDatabase()
@@ -247,7 +255,7 @@ export function ContactsPageClient({ accessToken }: Props) {
   }
 
   function startEdit() {
-    if (!selected) return
+    if (suspect || !selected) return
     setEditDraft({ ...selected, tagIds: tagsByContact.get(String(selected.id)) ?? [] })
     setEditing(true)
   }
@@ -255,6 +263,7 @@ export function ContactsPageClient({ accessToken }: Props) {
   // Patch the local row; replication pushes it with the row's expectedVersion.
   // The server fast-forwards (no conflict in this path) and the version bumps.
   async function handleSaveEdit() {
+    if (suspect) return
     const db = await getDatabase()
     const doc = await db.contact.findOne(selectedId ?? '').exec()
     if (doc) {
@@ -274,7 +283,7 @@ export function ContactsPageClient({ accessToken }: Props) {
 
   // Soft-delete via RxDB (sets _deleted); replication pushes the tombstone.
   async function handleDelete() {
-    if (!selectedId) return
+    if (suspect || !selectedId) return
     const db = await getDatabase()
     const doc = await db.contact.findOne(selectedId).exec()
     if (doc) await doc.remove()
@@ -285,6 +294,7 @@ export function ContactsPageClient({ accessToken }: Props) {
   // Mint the client-side UUID and insert locally; replication pushes it to the
   // server (offline-first create). The new row then appears via the live query.
   async function handleSave() {
+    if (suspect) return
     const id = crypto.randomUUID()
     const db = await getDatabase()
     await db.contact.insert({
@@ -336,7 +346,7 @@ export function ContactsPageClient({ accessToken }: Props) {
           />
           <button
             onClick={() => void handleAddCompany()}
-            disabled={!newCompany.trim()}
+            disabled={suspect || !newCompany.trim()}
             style={{
               fontSize: 13,
               padding: '6px 12px',
@@ -359,7 +369,7 @@ export function ContactsPageClient({ accessToken }: Props) {
           />
           <button
             onClick={() => void handleAddTag()}
-            disabled={!newTag.trim()}
+            disabled={suspect || !newTag.trim()}
             style={{
               fontSize: 13,
               padding: '6px 12px',
@@ -375,7 +385,8 @@ export function ContactsPageClient({ accessToken }: Props) {
           </button>
           <button
             onClick={startCreate}
-            style={{ fontSize: 13, padding: '6px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
+            disabled={suspect}
+            style={{ fontSize: 13, padding: '6px 12px', background: suspect ? '#e5e7eb' : '#3b82f6', color: suspect ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, cursor: suspect ? 'not-allowed' : 'pointer', fontWeight: 500 }}
           >
             New contact
           </button>
@@ -412,7 +423,10 @@ export function ContactsPageClient({ accessToken }: Props) {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
-        <div>
+        {/* minWidth:0 lets the 1fr track shrink below the table's intrinsic
+            width (grid items default to min-width:auto); overflowX scrolls a wide
+            table inside the column instead of overflowing the whole page. */}
+        <div style={{ minWidth: 0, overflowX: 'auto' }}>
           <RecordList
             descriptor={contactDescriptor}
             records={displayRecords}
@@ -436,7 +450,8 @@ export function ContactsPageClient({ accessToken }: Props) {
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button
                   onClick={() => void handleSave()}
-                  style={{ fontSize: 13, padding: '6px 14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
+                  disabled={suspect}
+                  style={{ fontSize: 13, padding: '6px 14px', background: suspect ? '#e5e7eb' : '#10b981', color: suspect ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, cursor: suspect ? 'not-allowed' : 'pointer', fontWeight: 500 }}
                 >
                   Save
                 </button>
@@ -456,13 +471,15 @@ export function ContactsPageClient({ accessToken }: Props) {
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={startEdit}
-                      style={{ fontSize: 13, padding: '4px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                      disabled={suspect}
+                      style={{ fontSize: 13, padding: '4px 12px', background: suspect ? '#e5e7eb' : '#3b82f6', color: suspect ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, cursor: suspect ? 'not-allowed' : 'pointer' }}
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => void handleDelete()}
-                      style={{ fontSize: 13, padding: '4px 12px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                      disabled={suspect}
+                      style={{ fontSize: 13, padding: '4px 12px', background: suspect ? '#e5e7eb' : '#ef4444', color: suspect ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, cursor: suspect ? 'not-allowed' : 'pointer' }}
                     >
                       Delete
                     </button>
@@ -482,7 +499,8 @@ export function ContactsPageClient({ accessToken }: Props) {
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button
                       onClick={() => void handleSaveEdit()}
-                      style={{ fontSize: 13, padding: '6px 14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
+                      disabled={suspect}
+                      style={{ fontSize: 13, padding: '6px 14px', background: suspect ? '#e5e7eb' : '#10b981', color: suspect ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, cursor: suspect ? 'not-allowed' : 'pointer', fontWeight: 500 }}
                     >
                       Save
                     </button>
