@@ -2,7 +2,7 @@ import { createRxDatabase, addRxPlugin, RxDatabase, RxCollection } from 'rxdb'
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode'
 import type { NoteRxDocument, RowRecord } from '@gammaray/core'
-import { contactDescriptor } from '@gammaray/core'
+import { contactDescriptor, companyDescriptor } from '@gammaray/core'
 import { rxSchemaFromDescriptor } from './rx-schema'
 
 if (process.env.NODE_ENV === 'development') {
@@ -12,6 +12,7 @@ if (process.env.NODE_ENV === 'development') {
 export type AppCollections = {
   note: RxCollection<NoteRxDocument>
   contact: RxCollection<RowRecord>
+  company: RxCollection<RowRecord>
 }
 export type AppDatabase = RxDatabase<AppCollections>
 
@@ -43,6 +44,9 @@ export async function getDatabase(): Promise<AppDatabase> {
       // first type-A table to ride the schema-driven path end to end.
       contact: {
         schema: rxSchemaFromDescriptor(contactDescriptor),
+      },
+      company: {
+        schema: rxSchemaFromDescriptor(companyDescriptor),
       },
     })
     return db

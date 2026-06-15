@@ -3,9 +3,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle } from '@gammaray/ui'
-import { contactDescriptor, type RowRecord, type ContactRevisionDto } from '@gammaray/core'
+import { contactDescriptor, companyDescriptor, type RowRecord, type ContactRevisionDto } from '@gammaray/core'
 import { getDatabase } from '@/lib/rxdb'
-import { startContactReplication, resolveContact } from '@/lib/contacts-sync'
+import { resolveContact } from '@/lib/contacts-sync'
+import { startRowReplication, BatchCoordinator } from '@/lib/batch-sync'
 import { makeGqlClient } from '@/lib/graphql-client'
 
 interface ContactConflict {
@@ -37,77 +38,70 @@ export function ContactsPageClient({ accessToken }: Props) {
   const [conflict, setConflict] = useState<ContactConflict | null>(null)
   const [offline, setOffline] = useState(false)
   const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([])
+  const [newCompany, setNewCompany] = useState('')
   const gqlClient = useRef(makeGqlClient(accessToken))
   const clientId = useRef<string>(crypto.randomUUID())
-  const replicationRef = useRef<ReturnType<typeof startContactReplication> | null>(null)
+  const replicationRef = useRef<ReturnType<typeof startRowReplication> | null>(null)
 
-  // Load companies for the reference picker (read-only lookup data).
+  // Local subscriptions — always on, so the UI reflects local data even offline.
   useEffect(() => {
     let active = true
-    gqlClient.current
-      .request<{ companies: Array<{ id: string; name: string }> }>('query { companies { id name } }')
-      .then((d) => {
-        if (active) setCompanies(d.companies)
-      })
-      .catch(() => {
-        /* ignore */
-      })
-    return () => {
-      active = false
-    }
-  }, [])
-
-  // Local subscription — always on, so the list reflects local data even offline.
-  useEffect(() => {
-    let active = true
-    let sub: { unsubscribe: () => void } | undefined
+    let contactSub: { unsubscribe: () => void } | undefined
+    let companySub: { unsubscribe: () => void } | undefined
     async function init() {
       const db = await getDatabase()
       if (!active) return
-      sub = db.contact.find().$.subscribe((docs) => {
+      contactSub = db.contact.find().$.subscribe((docs) => {
         setRecords(docs.map((d) => d.toJSON() as RowRecord))
+      })
+      companySub = db.company.find().$.subscribe((docs) => {
+        setCompanies(docs.map((d) => ({ id: String(d.get('id')), name: String(d.get('name') ?? '') })))
       })
     }
     void init()
     return () => {
       active = false
-      sub?.unsubscribe()
+      contactSub?.unsubscribe()
+      companySub?.unsubscribe()
     }
   }, [])
 
-  // Replication (pull + push + live WS stream) — runs only while online, and
-  // restarts on offline→online so edits made offline push (and can conflict).
+  // Replication — contact + company share one BatchCoordinator so their pushes
+  // ride a single atomic pushBatch (offline parent+child sync together). Runs
+  // only while online; restarts on reconnect to flush offline edits.
   useEffect(() => {
     if (offline) return
     let active = true
-    let started: ReturnType<typeof startContactReplication> | undefined
+    let started: Array<ReturnType<typeof startRowReplication>> = []
 
     async function init() {
       const db = await getDatabase()
       if (!active) return
-      started = startContactReplication(
-        db.contact,
-        gqlClient.current,
-        accessToken,
-        clientId.current,
-        ({ contactId, serverData, clientData }) =>
-          setConflict({ contactId, mine: clientData, theirs: serverData }),
-      )
+      const coordinator = new BatchCoordinator(gqlClient.current, clientId.current, (c) => {
+        if (c.table === 'contact') {
+          setConflict({ contactId: c.id, mine: c.clientData, theirs: c.serverData })
+        }
+      })
+      const contactRep = startRowReplication(contactDescriptor, db.contact, gqlClient.current, accessToken, coordinator)
+      const companyRep = startRowReplication(companyDescriptor, db.company, gqlClient.current, accessToken, coordinator)
+      started = [contactRep, companyRep]
       if (!active) {
-        void started.replication.cancel()
-        void started.wsClient.dispose()
+        started.forEach((r) => {
+          void r.replication.cancel()
+          void r.wsClient.dispose()
+        })
         return
       }
-      replicationRef.current = started
+      replicationRef.current = contactRep
     }
 
     void init()
     return () => {
       active = false
-      if (started) {
-        void started.replication.cancel()
-        void started.wsClient.dispose()
-      }
+      started.forEach((r) => {
+        void r.replication.cancel()
+        void r.wsClient.dispose()
+      })
       replicationRef.current = null
     }
   }, [offline])
@@ -149,6 +143,22 @@ export function ContactsPageClient({ accessToken }: Props) {
     setEditing(false)
     setDraft({})
     setCreating(true)
+  }
+
+  // Create a company locally (client-minted id). Works offline; the batch
+  // coordinator syncs it (and any contact referencing it) on reconnect.
+  async function handleAddCompany() {
+    const name = newCompany.trim()
+    if (!name) return
+    const db = await getDatabase()
+    await db.company.insert({
+      id: crypto.randomUUID(),
+      name,
+      version: 0,
+      updatedAt: new Date().toISOString(),
+      _deleted: false,
+    })
+    setNewCompany('')
   }
 
   function select(id: string) {
@@ -234,6 +244,18 @@ export function ContactsPageClient({ accessToken }: Props) {
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ margin: 0, fontSize: 20 }}>Contacts</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <input
+            value={newCompany}
+            onChange={(e) => setNewCompany(e.target.value)}
+            placeholder="New company name"
+            style={{ fontSize: 13, padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, outline: 'none' }}
+          />
+          <button
+            onClick={() => void handleAddCompany()}
+            style={{ fontSize: 13, padding: '6px 12px', background: '#6b7280', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
+          >
+            Add company
+          </button>
           <button
             onClick={startCreate}
             style={{ fontSize: 13, padding: '6px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}

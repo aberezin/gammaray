@@ -46,6 +46,9 @@ export interface TableDescriptor {
   table: string
   /** RxDB collection name on the client. */
   collection: string
+  /** GraphQL query field returning all rows (e.g. "contacts"). The live
+   *  subscription is assumed to be `${collection}Updated`. */
+  listField: string
   /** Primary key field and whether the client generates it (offline-first create). */
   identity: { field: string; clientGenerated: boolean }
   fields: FieldDescriptor[]

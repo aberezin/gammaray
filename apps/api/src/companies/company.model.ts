@@ -12,5 +12,8 @@ export class CompanyModel {
   version!: number
 
   @Field()
+  deleted!: boolean
+
+  @Field()
   updatedAt!: string
 }

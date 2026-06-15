@@ -6,6 +6,7 @@ import { FieldKind, MergeStrategyKind, TableDescriptor } from './descriptors'
 export const contactDescriptor: TableDescriptor = {
   table: 'contact',
   collection: 'contact',
+  listField: 'contacts',
   identity: { field: 'id', clientGenerated: true },
   // Disjoint field edits auto-merge (3-way against the ancestor); same-field
   // edits and delete-vs-edit still conflict.
