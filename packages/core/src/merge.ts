@@ -9,7 +9,11 @@ export type MergeResult =
   | { ok: false; conflictingFields: string[] }
 
 function dataFields(d: TableDescriptor): string[] {
-  return d.fields.filter((f) => !f.readOnly && f.kind !== FieldKind.Uuid).map((f) => f.name)
+  // MultiReference is virtual (lives in a join table), so it never participates
+  // in a row's 3-way merge.
+  return d.fields
+    .filter((f) => !f.readOnly && f.kind !== FieldKind.Uuid && f.kind !== FieldKind.MultiReference)
+    .map((f) => f.name)
 }
 
 function eq(a: unknown, b: unknown): boolean {

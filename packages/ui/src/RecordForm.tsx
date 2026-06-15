@@ -13,8 +13,8 @@ interface Props {
   record: Record<string, unknown>
   /** Read-only for now (the Read increment). Editing arrives with Update. */
   readOnly?: boolean
-  onChange?: (field: string, value: string) => void
-  /** Options for Reference fields, keyed by field name (e.g. companyId). */
+  onChange?: (field: string, value: string | string[]) => void
+  /** Options for Reference / MultiReference fields, keyed by field name. */
   references?: Record<string, ReferenceOption[]>
 }
 
@@ -47,6 +47,45 @@ export function RecordForm({ descriptor, record, readOnly = true, onChange, refe
                 ))}
               </select>
             </label>
+          )
+        }
+
+        // Many-to-many: a checkbox set; the value is an array of target ids.
+        if (f.kind === FieldKind.MultiReference) {
+          const options = references?.[f.name] ?? []
+          const selected = Array.isArray(record[f.name]) ? (record[f.name] as unknown[]).map(String) : []
+          return (
+            <div key={f.name} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {labelEl}
+              {options.length === 0 ? (
+                <span style={{ fontSize: 12, color: '#9ca3af' }}>none available</span>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {options.map((o) => {
+                    const checked = selected.includes(o.value)
+                    return (
+                      <label
+                        key={o.value}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, opacity: disabled ? 0.6 : 1 }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => {
+                            const next = checked
+                              ? selected.filter((v) => v !== o.value)
+                              : [...selected, o.value]
+                            onChange?.(f.name, next)
+                          }}
+                        />
+                        {o.label}
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           )
         }
 

@@ -24,6 +24,20 @@ export const contactDescriptor: TableDescriptor = {
       kind: FieldKind.Reference,
       references: { collection: 'company', titleField: 'name' },
     },
+    {
+      // Many-to-many to tags via the contact_tags join table. Virtual: not a
+      // column on contact — the page materializes it into join rows.
+      name: 'tagIds',
+      label: 'Tags',
+      kind: FieldKind.MultiReference,
+      via: {
+        joinCollection: 'contact_tag',
+        localField: 'contactId',
+        remoteField: 'tagId',
+        targetCollection: 'tag',
+        titleField: 'name',
+      },
+    },
     { name: 'version', label: 'Version', kind: FieldKind.Int, readOnly: true },
     { name: 'updatedAt', label: 'Updated', kind: FieldKind.Timestamp, readOnly: true },
   ],

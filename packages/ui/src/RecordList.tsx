@@ -24,6 +24,11 @@ export function RecordList({ descriptor, records, selectedId, onSelect, referenc
       if (!id) return ''
       return references?.[field.name]?.[String(id)] ?? '(unknown)'
     }
+    if (field.kind === FieldKind.MultiReference) {
+      const ids = Array.isArray(record[field.name]) ? (record[field.name] as unknown[]).map(String) : []
+      const map = references?.[field.name] ?? {}
+      return ids.map((id) => map[id] ?? '(unknown)').join(', ')
+    }
     return formatCell(record[field.name], field.kind)
   }
 

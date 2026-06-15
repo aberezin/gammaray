@@ -8,6 +8,8 @@ import {
   ContactRevisionEntity,
   CompanyEntity,
   CategoryEntity,
+  TagEntity,
+  ContactTagEntity,
 } from '@gammaray/database'
 
 @Global()
@@ -29,6 +31,8 @@ import {
           ContactRevisionEntity,
           CompanyEntity,
           CategoryEntity,
+          TagEntity,
+          ContactTagEntity,
         ],
         migrations: [],
         synchronize: false,

@@ -2,7 +2,7 @@ import { createRxDatabase, removeRxDatabase, addRxPlugin, RxDatabase, RxCollecti
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode'
 import type { NoteRxDocument, RowRecord } from '@gammaray/core'
-import { contactDescriptor, companyDescriptor, categoryDescriptor } from '@gammaray/core'
+import { contactDescriptor, companyDescriptor, categoryDescriptor, tagDescriptor, contactTagDescriptor } from '@gammaray/core'
 import { rxSchemaFromDescriptor } from './rx-schema'
 
 if (process.env.NODE_ENV === 'development') {
@@ -14,6 +14,8 @@ export type AppCollections = {
   contact: RxCollection<RowRecord>
   company: RxCollection<RowRecord>
   category: RxCollection<RowRecord>
+  tag: RxCollection<RowRecord>
+  contact_tag: RxCollection<RowRecord>
 }
 export type AppDatabase = RxDatabase<AppCollections>
 
@@ -40,6 +42,8 @@ const collections = {
   contact: { schema: rxSchemaFromDescriptor(contactDescriptor) },
   company: { schema: rxSchemaFromDescriptor(companyDescriptor) },
   category: { schema: rxSchemaFromDescriptor(categoryDescriptor) },
+  tag: { schema: rxSchemaFromDescriptor(tagDescriptor) },
+  contact_tag: { schema: rxSchemaFromDescriptor(contactTagDescriptor) },
 } as const
 
 let dbPromise: Promise<AppDatabase> | null = null
