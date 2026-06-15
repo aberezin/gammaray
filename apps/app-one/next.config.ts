@@ -6,6 +6,9 @@ const config: NextConfig = {
   logging: {
     incomingRequests: false,
   },
+  turbopack: {
+    root: '../../',
+  },
 }
 
 export default config
