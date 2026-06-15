@@ -1,12 +1,18 @@
 # GammaRay
 
-##Overview
+## Overview
 Gammaray is an POC application to develop a reliable tech stack that can be coded by agents.
 The engineering team is made up of Alan Berezin and various agents.
 
+## Getting Started
 
+**👉 [DEV_SETUP.md](./DEV_SETUP.md)** — How to run the app locally and test in Chrome. **Start here.**
 
-### Agent Instructions
+Other key docs:
+- [CLAUDE.md](./CLAUDE.md) — Project overview, architecture, and commands for agents
+- [LOCAL.md](./LOCAL.md) (git-ignored) — Machine-specific setup (package manager, container runtime, etc.)
+
+## Agent Instructions
 
     TODO need commit rules
 
