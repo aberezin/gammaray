@@ -8,7 +8,16 @@ GammaRay is a POC whose goal is to develop a reliable tech stack that can be cod
 
 ## Local machine
 
-Read `LOCAL.md` (git-ignored; template in `LOCAL.example.md`) for machine-specific nuances — package manager, where global tools live, PATH quirks, and local service setup. It captures environment details (e.g. MacPorts vs Homebrew, the language-server PATH) that aren't derivable from the code.
+**Check `LOCAL.md` first** — it is git-ignored and contains machine-specific environment details that affect how this repo runs. If it doesn't exist, copy `LOCAL.example.md` to `LOCAL.md` and fill in your setup.
+
+Examples of what goes in LOCAL.md:
+- Package manager and tool locations (`brew` vs MacPorts, global npm prefix)
+- Node version manager and PATH configuration
+- Container runtime (Docker Desktop vs Colima)
+- Database connection details and how services are started locally
+- Any OS-specific quirks or workarounds
+
+Agents will read LOCAL.md to understand your machine's configuration and avoid environment-specific gotchas.
 
 ## Commands
 
