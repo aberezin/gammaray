@@ -108,6 +108,15 @@ Auth is fully stateless JWT. No server-side session storage.
 - **Major version upgrades** (framework, runtime, major dependency): create a feature branch (e.g. `chore/next-upgrade-16`), commit there, then ask for review before merging. This gives a checkpoint to assess risk.
 - **Other changes**: commit directly to main per the workflow ("commit after each major change; PRs only when asked").
 
+### Working with executable scripts
+
+The Edit tool loses file permissions (executable bit) when modifying files. When editing shell scripts (`.sh`) or other executables:
+
+1. After editing, restore the executable bit: `chmod +x scripts/your-script.sh`
+2. Commit with: `git update-index --chmod=+x scripts/your-script.sh && git commit`
+
+This ensures clones of the repo will have executable scripts. Examples: `scripts/dev-with-ports.sh`, `scripts/find-free-port.sh`.
+
 ## Notes
 
 - Two frontend applications (`apps/app-one`, `apps/app-two` placeholder) share one backend and must communicate only through it.
