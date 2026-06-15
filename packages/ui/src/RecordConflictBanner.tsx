@@ -16,6 +16,8 @@ interface Props {
 // either side. (Field-level merge is a later strategy.)
 export function RecordConflictBanner({ descriptor, mine, theirs, onKeepMine, onKeepTheirs }: Props) {
   const fields = descriptor.fields.filter((f) => !f.readOnly && f.kind !== FieldKind.Uuid)
+  const mineDeleted = mine.deleted === true
+  const theirsDeleted = theirs.deleted === true
 
   return (
     <div style={{ border: '2px solid #ef4444', borderRadius: 8, padding: 16, background: '#fef2f2', marginBottom: 16 }}>
@@ -34,8 +36,8 @@ export function RecordConflictBanner({ descriptor, mine, theirs, onKeepMine, onK
         </thead>
         <tbody>
           {fields.map((f) => {
-            const mineVal = str(mine[f.name])
-            const theirsVal = str(theirs[f.name])
+            const mineVal = mineDeleted ? '(deleted)' : str(mine[f.name])
+            const theirsVal = theirsDeleted ? '(deleted)' : str(theirs[f.name])
             const differs = mineVal !== theirsVal
             return (
               <tr key={f.name} style={{ background: differs ? '#fff7ed' : 'transparent' }}>

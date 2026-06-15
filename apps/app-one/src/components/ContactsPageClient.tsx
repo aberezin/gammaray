@@ -169,6 +169,8 @@ export function ContactsPageClient({ accessToken }: Props) {
       lastName: String(row.lastName ?? ''),
       email: String(row.email ?? ''),
       phone: String(row.phone ?? ''),
+      // The chosen side may be a deletion (accept) or not (resurrect).
+      deleted: row.deleted === true,
     }
     await resolveContact(gqlClient.current, input, clientId.current)
     setConflict(null)
