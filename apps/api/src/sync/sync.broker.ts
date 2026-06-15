@@ -2,9 +2,11 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common'
 import { PubSub } from 'graphql-subscriptions'
 import { NoteModel } from '../notes/note.model'
 import { ContactModel } from '../contacts/contact.model'
+import { CompanyModel } from '../companies/company.model'
 
 const NOTE_UPDATED = 'noteUpdated'
 const CONTACT_UPDATED = 'contactUpdated'
+const COMPANY_UPDATED = 'companyUpdated'
 
 /**
  * Thin abstraction over a pub/sub backend.
@@ -32,6 +34,14 @@ export class SyncBroker implements OnModuleDestroy {
 
   contactAsyncIterator() {
     return this.pubSub.asyncIterator(CONTACT_UPDATED)
+  }
+
+  emitCompany(company: CompanyModel): void {
+    void this.pubSub.publish(COMPANY_UPDATED, { companyUpdated: company })
+  }
+
+  companyAsyncIterator() {
+    return this.pubSub.asyncIterator(COMPANY_UPDATED)
   }
 
   onModuleDestroy() {

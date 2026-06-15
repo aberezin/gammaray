@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, Repository, Not } from 'typeorm'
-import { ContactEntity, ContactRevisionEntity } from '@gammaray/database'
+import { DataSource, EntityManager, Repository, Not } from 'typeorm'
+import { ContactEntity, ContactRevisionEntity, CompanyEntity } from '@gammaray/database'
 import { ConflictStatus, contactDescriptor, mergeRows } from '@gammaray/core'
 import { ContactInput } from './contact.model'
+import { ApplyOutcome, RowChangeInput } from '../batch/batch.types'
 
 export interface ContactPushResult {
   conflict: boolean
@@ -39,152 +40,164 @@ export class ContactsService {
     })
   }
 
-  // Create + Update. A new id inserts at version 1. An existing id is reconciled
-  // with optimistic concurrency (Model A): if the row is still at expectedVersion
-  // it fast-forwards; otherwise it diverged. The default WholeRow merge strategy
-  // treats any divergence as a conflict (DisjointFields auto-merge comes later).
+  // Apply one contact change against the given transaction manager (no tx of its
+  // own — the batch coordinator owns it). Reconciles per the Model-A version
+  // rules + the table's merge strategy, validates the company reference, and
+  // records a revision. This is the single source of contact write logic.
+  async applyContactChange(
+    manager: EntityManager,
+    change: RowChangeInput,
+    clientId: string,
+  ): Promise<ApplyOutcome> {
+    const contactRepo = manager.getRepository(ContactEntity)
+    const revRepo = manager.getRepository(ContactRevisionEntity)
+    const companyRepo = manager.getRepository(CompanyEntity)
+
+    const d = change.data
+    const ours = {
+      id: change.id,
+      firstName: str(d.firstName),
+      lastName: str(d.lastName),
+      email: str(d.email),
+      phone: str(d.phone),
+      companyId: (d.companyId as string | null | undefined) ?? null,
+    }
+
+    // Row-level lock so concurrent writes to the same row serialize.
+    const existing = await contactRepo
+      .createQueryBuilder('c')
+      .where('c.id = :id', { id: change.id })
+      .setLock('pessimistic_write')
+      .getOne()
+
+    const recordDetected = (server: ContactEntity) =>
+      revRepo.save(
+        revRepo.create({
+          contactId: server.id,
+          data: { ...ours, deleted: change.op === 'DELETE', version: server.version },
+          version: server.version,
+          clientId,
+          conflictStatus: ConflictStatus.Detected,
+        }),
+      )
+    const saveRev = (row: ContactEntity) =>
+      revRepo.save(
+        revRepo.create({
+          contactId: row.id,
+          data: snapshot(row),
+          version: row.version,
+          clientId,
+          conflictStatus: ConflictStatus.None,
+        }),
+      )
+
+    // DELETE
+    if (change.op === 'DELETE') {
+      if (!existing) return { status: 'APPLIED', row: null }
+      if (existing.version !== change.expectedVersion) {
+        await recordDetected(existing)
+        return { status: 'CONFLICT', serverVersion: existing.version, row: snapshot(existing) }
+      }
+      const version = existing.version + 1
+      await contactRepo.update(existing.id, { deleted: true, version })
+      const deleted = { ...existing, deleted: true, version } as ContactEntity
+      await saveRev(deleted)
+      return { status: 'APPLIED', row: deleted, emit: deleted }
+    }
+
+    // UPSERT — the company reference must resolve within this transaction.
+    if (ours.companyId) {
+      const company = await companyRepo.findOneBy({ id: ours.companyId })
+      if (!company) {
+        return { status: 'REJECTED', reason: `missing reference company:${ours.companyId}` }
+      }
+    }
+
+    if (!existing) {
+      const created = await contactRepo.save(contactRepo.create({ ...ours, version: 1 }))
+      await saveRev(created)
+      return { status: 'APPLIED', row: created, emit: created }
+    }
+
+    if (existing.version !== change.expectedVersion) {
+      // A delete on the server side can't be field-merged — surface it.
+      if (existing.deleted) {
+        await recordDetected(existing)
+        return { status: 'CONFLICT', serverVersion: existing.version, row: snapshot(existing) }
+      }
+      const base = await loadBaseSnapshot(revRepo, existing.id, change.expectedVersion)
+      const result = mergeRows(contactDescriptor, base, ours, snapshot(existing))
+      if (!result.ok) {
+        await recordDetected(existing)
+        return { status: 'CONFLICT', serverVersion: existing.version, row: snapshot(existing) }
+      }
+      const m = result.merged
+      const version = existing.version + 1
+      const merged = {
+        ...existing,
+        firstName: str(m.firstName),
+        lastName: str(m.lastName),
+        email: str(m.email),
+        phone: str(m.phone),
+        companyId: (m.companyId ?? null) as string | null,
+        version,
+      } as ContactEntity
+      await contactRepo.update(existing.id, {
+        firstName: merged.firstName,
+        lastName: merged.lastName,
+        email: merged.email,
+        phone: merged.phone,
+        companyId: merged.companyId,
+        version,
+      })
+      await saveRev(merged)
+      return { status: 'APPLIED', row: merged, emit: merged }
+    }
+
+    // Fast-forward.
+    const version = existing.version + 1
+    const updated = { ...existing, ...ours, version } as ContactEntity
+    await contactRepo.update(existing.id, {
+      firstName: ours.firstName,
+      lastName: ours.lastName,
+      email: ours.email,
+      phone: ours.phone,
+      companyId: ours.companyId,
+      version,
+    })
+    await saveRev(updated)
+    return { status: 'APPLIED', row: updated, emit: updated }
+  }
+
+  // Legacy single-row push (kept alongside the batch endpoint during migration).
+  // Delegates to applyContactChange so write logic lives in one place.
   async pushContact(
     input: ContactInput,
     expectedVersion: number,
     clientId: string,
   ): Promise<ContactPushResult> {
-    return this.dataSource.transaction(async (manager) => {
-      const contactRepo = manager.getRepository(ContactEntity)
-      const revRepo = manager.getRepository(ContactRevisionEntity)
-
-      // Row-level lock so concurrent pushes to the same row serialize.
-      const existing = input.id
-        ? await contactRepo
-            .createQueryBuilder('c')
-            .where('c.id = :id', { id: input.id })
-            .setLock('pessimistic_write')
-            .getOne()
-        : null
-
-      // Create: brand-new row (a delete of a non-existent row is a no-op).
-      if (!existing) {
-        if (input.deleted) return { conflict: false, contact: null }
-        const created = await contactRepo.save(
-          contactRepo.create({
-            id: input.id,
-            firstName: input.firstName,
-            lastName: input.lastName,
-            email: input.email,
-            phone: input.phone,
-            companyId: input.companyId ?? null,
-            version: 1,
-          }),
-        )
-        await revRepo.save(
-          revRepo.create({
-            contactId: created.id,
-            data: snapshot(created),
-            version: 1,
-            clientId,
-            conflictStatus: ConflictStatus.None,
-          }),
-        )
-        return { conflict: false, contact: created }
+    const change: RowChangeInput = {
+      table: 'contact',
+      id: input.id,
+      op: input.deleted ? 'DELETE' : 'UPSERT',
+      data: incoming(input),
+      expectedVersion,
+    }
+    const outcome = await this.dataSource.transaction((manager) =>
+      this.applyContactChange(manager, change, clientId),
+    )
+    if (outcome.status === 'CONFLICT') {
+      return {
+        conflict: true,
+        contact: null,
+        serverVersion: outcome.serverVersion,
+        serverData: (outcome.row as Record<string, unknown> | null) ?? undefined,
       }
-
-      // Diverged version — reconcile per the table's merge strategy.
-      if (existing.version !== expectedVersion) {
-        const asConflict = async (): Promise<ContactPushResult> => {
-          await revRepo.save(
-            revRepo.create({
-              contactId: existing.id,
-              data: { ...incoming(input), deleted: input.deleted, version: existing.version },
-              version: existing.version,
-              clientId,
-              conflictStatus: ConflictStatus.Detected,
-            }),
-          )
-          return {
-            conflict: true,
-            contact: null,
-            serverVersion: existing.version,
-            serverData: snapshot(existing),
-          }
-        }
-
-        // A delete on either side can't be field-merged — surface it.
-        if (input.deleted || existing.deleted) return asConflict()
-
-        // 3-way merge against the ancestor snapshot at the client's version.
-        const base = await loadBaseSnapshot(revRepo, existing.id, expectedVersion)
-        const result = mergeRows(contactDescriptor, base, incoming(input), snapshot(existing))
-        if (!result.ok) return asConflict()
-
-        // Auto-merged (e.g. disjoint fields) — apply the merged row.
-        const nextVersion = existing.version + 1
-        const m = result.merged
-        const mCompanyId = (m.companyId ?? null) as string | null
-        await contactRepo.update(existing.id, {
-          firstName: String(m.firstName ?? ''),
-          lastName: String(m.lastName ?? ''),
-          email: String(m.email ?? ''),
-          phone: String(m.phone ?? ''),
-          companyId: mCompanyId,
-          version: nextVersion,
-        })
-        const merged = {
-          ...existing,
-          firstName: String(m.firstName ?? ''),
-          lastName: String(m.lastName ?? ''),
-          email: String(m.email ?? ''),
-          phone: String(m.phone ?? ''),
-          companyId: mCompanyId,
-          version: nextVersion,
-        } as ContactEntity
-        await revRepo.save(
-          revRepo.create({
-            contactId: existing.id,
-            data: snapshot(merged),
-            version: nextVersion,
-            clientId,
-            conflictStatus: ConflictStatus.None,
-          }),
-        )
-        return { conflict: false, contact: merged }
-      }
-
-      // Fast-forward: apply the delete or the edit.
-      const nextVersion = existing.version + 1
-      if (input.deleted) {
-        await contactRepo.update(existing.id, { deleted: true, version: nextVersion })
-        const deleted = { ...existing, deleted: true, version: nextVersion } as ContactEntity
-        await revRepo.save(
-          revRepo.create({
-            contactId: existing.id,
-            data: snapshot(deleted),
-            version: nextVersion,
-            clientId,
-            conflictStatus: ConflictStatus.None,
-          }),
-        )
-        return { conflict: false, contact: deleted }
-      }
-
-      await contactRepo.update(existing.id, {
-        firstName: input.firstName,
-        lastName: input.lastName,
-        email: input.email,
-        phone: input.phone,
-        companyId: input.companyId ?? null,
-        version: nextVersion,
-      })
-      const updated = { ...existing, ...incoming(input), version: nextVersion } as ContactEntity
-      await revRepo.save(
-        revRepo.create({
-          contactId: existing.id,
-          data: snapshot(updated),
-          version: nextVersion,
-          clientId,
-          conflictStatus: ConflictStatus.None,
-        }),
-      )
-      return { conflict: false, contact: updated }
-    })
+    }
+    if (outcome.status === 'REJECTED') {
+      throw new Error(outcome.reason ?? 'contact change rejected')
+    }
+    return { conflict: false, contact: (outcome.row as ContactEntity | null) ?? null }
   }
 
   // Resolve a detected conflict by writing the user's chosen row. Unconditional
@@ -252,6 +265,10 @@ async function loadBaseSnapshot(
     order: { createdAt: 'DESC' },
   })
   return rev ? (rev.data as Record<string, unknown>) : null
+}
+
+function str(v: unknown): string {
+  return v === null || v === undefined ? '' : String(v)
 }
 
 function incoming(input: ContactInput): Record<string, unknown> {

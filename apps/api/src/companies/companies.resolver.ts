@@ -1,18 +1,28 @@
-import { Resolver, Query } from '@nestjs/graphql'
+import { Resolver, Query, Subscription } from '@nestjs/graphql'
 import { UseGuards } from '@nestjs/common'
 import { CompanyEntity } from '@gammaray/database'
 import { CompaniesService } from './companies.service'
 import { CompanyModel } from './company.model'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import { SyncBroker } from '../sync/sync.broker'
 
 @Resolver(() => CompanyModel)
 @UseGuards(JwtAuthGuard)
 export class CompaniesResolver {
-  constructor(private readonly service: CompaniesService) {}
+  constructor(
+    private readonly service: CompaniesService,
+    private readonly broker: SyncBroker,
+  ) {}
 
   @Query(() => [CompanyModel])
   async companies(): Promise<CompanyModel[]> {
     return (await this.service.listCompanies()).map(toCompanyModel)
+  }
+
+  @Subscription(() => CompanyModel)
+  companyUpdated() {
+    // Companies are a shared dataset — a single global channel.
+    return this.broker.companyAsyncIterator()
   }
 }
 

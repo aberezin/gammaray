@@ -7,6 +7,7 @@ import { UsersModule } from './users/users.module'
 import { NotesModule } from './notes/notes.module'
 import { ContactsModule } from './contacts/contacts.module'
 import { CompaniesModule } from './companies/companies.module'
+import { BatchModule } from './batch/batch.module'
 import { SyncModule } from './sync/sync.module'
 
 @Module({
@@ -50,6 +51,7 @@ import { SyncModule } from './sync/sync.module'
     NotesModule,
     ContactsModule,
     CompaniesModule,
+    BatchModule,
     SyncModule,
   ],
 })
