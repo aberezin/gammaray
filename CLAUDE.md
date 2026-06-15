@@ -19,6 +19,12 @@ Examples of what goes in LOCAL.md:
 
 Agents will read LOCAL.md to understand your machine's configuration and avoid environment-specific gotchas.
 
+**For development and Chrome testing, see `DEV_SETUP.md`** — comprehensive guide explaining:
+- How to run the full stack
+- How to run frontend locally for Chrome testing (recommended)
+- The Colima port forwarding quirks and why port 3000 hangs
+- How to stop the containerized frontend and run it locally
+
 ## Commands
 
 ```bash
