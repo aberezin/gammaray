@@ -67,7 +67,8 @@ export class SyncBroker implements OnModuleDestroy {
   }
 
   emitContactTag(link: ContactTagModel): void {
-    void this.pubSub.publish(CONTACT_TAG_UPDATED, { contactTagUpdated: link })
+    // Payload key must equal the subscription field name (contact_tagUpdated).
+    void this.pubSub.publish(CONTACT_TAG_UPDATED, { contact_tagUpdated: link })
   }
 
   contactTagAsyncIterator() {

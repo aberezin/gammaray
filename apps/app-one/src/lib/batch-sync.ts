@@ -3,7 +3,7 @@ import { createClient } from 'graphql-ws'
 import { Observable } from 'rxjs'
 import type { RxCollection, WithDeleted } from 'rxdb'
 import type { GraphQLClient } from 'graphql-request'
-import { type RowRecord, type TableDescriptor } from '@gammaray/core'
+import { FieldKind, type RowRecord, type TableDescriptor } from '@gammaray/core'
 
 type SyncDoc = WithDeleted<RowRecord>
 
@@ -157,7 +157,10 @@ export class BatchCoordinator {
   private dataFor(table: string, doc: RowRecord): Record<string, unknown> {
     const descriptor = this.descriptors.get(table)
     const data: Record<string, unknown> = {}
-    for (const f of descriptor?.fields ?? []) data[f.name] = doc[f.name]
+    for (const f of descriptor?.fields ?? []) {
+      if (f.kind === FieldKind.MultiReference) continue // virtual, not stored
+      data[f.name] = doc[f.name]
+    }
     data.id = doc.id
     return data
   }
@@ -174,6 +177,7 @@ export class BatchCoordinator {
     const descriptor = this.descriptors.get(table)
     const doc: Record<string, unknown> = {}
     for (const f of descriptor?.fields ?? []) {
+      if (f.kind === FieldKind.MultiReference) continue // virtual, not stored
       doc[f.name] = f.name in serverRow ? serverRow[f.name] : local?.[f.name]
     }
     doc.id = serverRow.id ?? local?.id
@@ -194,7 +198,11 @@ export function startRowReplication(
   coordinator: BatchCoordinator,
 ) {
   coordinator.register(descriptor)
-  const fields = descriptor.fields.map((f) => f.name).join(' ')
+  // Virtual fields (MultiReference) aren't columns — exclude from the wire query.
+  const fields = descriptor.fields
+    .filter((f) => f.kind !== FieldKind.MultiReference)
+    .map((f) => f.name)
+    .join(' ')
   const PULL = `query { ${descriptor.listField} { ${fields} deleted } }`
   const SUB = `subscription { ${descriptor.collection}Updated { ${fields} deleted } }`
 

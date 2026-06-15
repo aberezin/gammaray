@@ -19,7 +19,9 @@ export class ContactTagsResolver {
     return (await this.service.listContactTags()).map(toContactTagModel)
   }
 
-  @Subscription(() => ContactTagModel)
+  // Field name must match the client's `${descriptor.collection}Updated`, and
+  // the collection is the RxDB-valid lowercase `contact_tag`.
+  @Subscription(() => ContactTagModel, { name: 'contact_tagUpdated' })
   contactTagUpdated() {
     return this.broker.contactTagAsyncIterator()
   }

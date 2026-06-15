@@ -31,7 +31,7 @@ export const contactDescriptor: TableDescriptor = {
       label: 'Tags',
       kind: FieldKind.MultiReference,
       via: {
-        joinCollection: 'contactTag',
+        joinCollection: 'contact_tag',
         localField: 'contactId',
         remoteField: 'tagId',
         targetCollection: 'tag',

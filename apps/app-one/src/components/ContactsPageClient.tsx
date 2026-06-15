@@ -3,7 +3,14 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle } from '@gammaray/ui'
-import { contactDescriptor, companyDescriptor, type RowRecord, type ContactRevisionDto } from '@gammaray/core'
+import {
+  contactDescriptor,
+  companyDescriptor,
+  tagDescriptor,
+  contactTagDescriptor,
+  type RowRecord,
+  type ContactRevisionDto,
+} from '@gammaray/core'
 import { getDatabase } from '@/lib/rxdb'
 import { resolveContact } from '@/lib/contacts-sync'
 import { startRowReplication, BatchCoordinator } from '@/lib/batch-sync'
@@ -39,6 +46,9 @@ export function ContactsPageClient({ accessToken }: Props) {
   const [offline, setOffline] = useState(false)
   const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([])
   const [newCompany, setNewCompany] = useState('')
+  const [tags, setTags] = useState<Array<{ id: string; name: string }>>([])
+  const [links, setLinks] = useState<RowRecord[]>([])
+  const [newTag, setNewTag] = useState('')
   const gqlClient = useRef(makeGqlClient(accessToken))
   const clientId = useRef<string>(crypto.randomUUID())
   const replicationRef = useRef<ReturnType<typeof startRowReplication> | null>(null)
@@ -46,23 +56,31 @@ export function ContactsPageClient({ accessToken }: Props) {
   // Local subscriptions — always on, so the UI reflects local data even offline.
   useEffect(() => {
     let active = true
-    let contactSub: { unsubscribe: () => void } | undefined
-    let companySub: { unsubscribe: () => void } | undefined
+    const subs: Array<{ unsubscribe: () => void }> = []
     async function init() {
       const db = await getDatabase()
       if (!active) return
-      contactSub = db.contact.find().$.subscribe((docs) => {
-        setRecords(docs.map((d) => d.toJSON() as RowRecord))
-      })
-      companySub = db.company.find().$.subscribe((docs) => {
-        setCompanies(docs.map((d) => ({ id: String(d.get('id')), name: String(d.get('name') ?? '') })))
-      })
+      subs.push(
+        db.contact.find().$.subscribe((docs) => setRecords(docs.map((d) => d.toJSON() as RowRecord))),
+      )
+      subs.push(
+        db.company.find().$.subscribe((docs) =>
+          setCompanies(docs.map((d) => ({ id: String(d.get('id')), name: String(d.get('name') ?? '') }))),
+        ),
+      )
+      subs.push(
+        db.tag.find().$.subscribe((docs) =>
+          setTags(docs.map((d) => ({ id: String(d.get('id')), name: String(d.get('name') ?? '') }))),
+        ),
+      )
+      subs.push(
+        db.contact_tag.find().$.subscribe((docs) => setLinks(docs.map((d) => d.toJSON() as RowRecord))),
+      )
     }
     void init()
     return () => {
       active = false
-      contactSub?.unsubscribe()
-      companySub?.unsubscribe()
+      subs.forEach((s) => s.unsubscribe())
     }
   }, [])
 
@@ -84,7 +102,9 @@ export function ContactsPageClient({ accessToken }: Props) {
       })
       const contactRep = startRowReplication(contactDescriptor, db.contact, gqlClient.current, accessToken, coordinator)
       const companyRep = startRowReplication(companyDescriptor, db.company, gqlClient.current, accessToken, coordinator)
-      started = [contactRep, companyRep]
+      const tagRep = startRowReplication(tagDescriptor, db.tag, gqlClient.current, accessToken, coordinator)
+      const linkRep = startRowReplication(contactTagDescriptor, db.contact_tag, gqlClient.current, accessToken, coordinator)
+      started = [contactRep, companyRep, tagRep, linkRep]
       if (!active) {
         started.forEach((r) => {
           void r.replication.cancel()
@@ -109,13 +129,30 @@ export function ContactsPageClient({ accessToken }: Props) {
   const selected = records.find((r) => r.id === selectedId) ?? null
   const selectedVersion = selected ? Number(selected.version ?? 0) : null
 
-  // Reference field maps for the company picker (options) and the list (labels).
+  // Reference field maps for pickers (options) and the list (labels), for both
+  // the company (many-to-one) and tags (many-to-many) relations.
   const referenceOptions = {
     companyId: companies.map((c) => ({ value: c.id, label: c.name })),
+    tagIds: tags.map((t) => ({ value: t.id, label: t.name })),
   }
   const referenceLabels = {
     companyId: Object.fromEntries(companies.map((c) => [c.id, c.name])),
+    tagIds: Object.fromEntries(tags.map((t) => [t.id, t.name])),
   }
+
+  // Active tag ids per contact, derived from the join rows (the m2m relation
+  // lives in contact_tags, not as a column on contact).
+  const tagsByContact = new Map<string, string[]>()
+  for (const l of links) {
+    const cid = String(l.contactId)
+    if (!tagsByContact.has(cid)) tagsByContact.set(cid, [])
+    tagsByContact.get(cid)!.push(String(l.tagId))
+  }
+  // Project the virtual tagIds onto each row for the descriptor-driven UI.
+  const displayRecords = records.map((r) => ({ ...r, tagIds: tagsByContact.get(String(r.id)) ?? [] }))
+  const selectedWithTags = selected
+    ? { ...selected, tagIds: tagsByContact.get(String(selected.id)) ?? [] }
+    : null
 
   // Fetch the selected record's version history. Re-fetches when its version
   // changes (e.g. after an edit reconciles) so history stays current.
@@ -161,6 +198,48 @@ export function ContactsPageClient({ accessToken }: Props) {
     setNewCompany('')
   }
 
+  // Create a tag locally (client-minted id). Works offline; syncs via the batch.
+  async function handleAddTag() {
+    const name = newTag.trim()
+    if (!name) return
+    const db = await getDatabase()
+    await db.tag.insert({
+      id: crypto.randomUUID(),
+      name,
+      version: 0,
+      updatedAt: new Date().toISOString(),
+      _deleted: false,
+    })
+    setNewTag('')
+  }
+
+  // Reconcile a contact's tags to `desired` by creating/removing join rows. The
+  // inserts/removes ride the batch coordinator alongside the contact write, so a
+  // brand-new contact + its links sync atomically.
+  async function reconcileLinks(contactId: string, desired: string[]) {
+    const db = await getDatabase()
+    const current = tagsByContact.get(contactId) ?? []
+    const toAdd = desired.filter((t) => !current.includes(t))
+    const toRemove = current.filter((t) => !desired.includes(t))
+    for (const tagId of toAdd) {
+      await db.contact_tag.insert({
+        id: crypto.randomUUID(),
+        contactId,
+        tagId,
+        version: 0,
+        updatedAt: new Date().toISOString(),
+        _deleted: false,
+      })
+    }
+    for (const tagId of toRemove) {
+      const link = links.find((l) => String(l.contactId) === contactId && String(l.tagId) === tagId)
+      if (link) {
+        const doc = await db.contact_tag.findOne(String(link.id)).exec()
+        if (doc) await doc.remove()
+      }
+    }
+  }
+
   function select(id: string) {
     setCreating(false)
     setEditing(false)
@@ -169,7 +248,7 @@ export function ContactsPageClient({ accessToken }: Props) {
 
   function startEdit() {
     if (!selected) return
-    setEditDraft({ ...selected })
+    setEditDraft({ ...selected, tagIds: tagsByContact.get(String(selected.id)) ?? [] })
     setEditing(true)
   }
 
@@ -186,6 +265,9 @@ export function ContactsPageClient({ accessToken }: Props) {
         phone: String(editDraft.phone ?? ''),
         companyId: editDraft.companyId ? String(editDraft.companyId) : null,
       })
+    }
+    if (selectedId) {
+      await reconcileLinks(selectedId, (editDraft.tagIds as string[] | undefined) ?? [])
     }
     setEditing(false)
   }
@@ -216,6 +298,7 @@ export function ContactsPageClient({ accessToken }: Props) {
       updatedAt: new Date().toISOString(),
       _deleted: false,
     })
+    await reconcileLinks(id, (draft.tagIds as string[] | undefined) ?? [])
     setCreating(false)
     setDraft({})
     setSelectedId(id)
@@ -267,6 +350,29 @@ export function ContactsPageClient({ accessToken }: Props) {
           >
             Add company
           </button>
+          <input
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleAddTag() }}
+            placeholder="New tag name"
+            style={{ fontSize: 13, padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, outline: 'none' }}
+          />
+          <button
+            onClick={() => void handleAddTag()}
+            disabled={!newTag.trim()}
+            style={{
+              fontSize: 13,
+              padding: '6px 12px',
+              background: newTag.trim() ? '#8b5cf6' : '#e5e7eb',
+              color: newTag.trim() ? '#fff' : '#9ca3af',
+              border: 'none',
+              borderRadius: 6,
+              cursor: newTag.trim() ? 'pointer' : 'not-allowed',
+              fontWeight: 500,
+            }}
+          >
+            Add tag
+          </button>
           <button
             onClick={startCreate}
             style={{ fontSize: 13, padding: '6px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
@@ -309,7 +415,7 @@ export function ContactsPageClient({ accessToken }: Props) {
         <div>
           <RecordList
             descriptor={contactDescriptor}
-            records={records}
+            records={displayRecords}
             selectedId={selectedId}
             onSelect={select}
             references={referenceLabels}
@@ -389,7 +495,7 @@ export function ContactsPageClient({ accessToken }: Props) {
                   </div>
                 </>
               ) : (
-                <RecordForm descriptor={contactDescriptor} record={selected} readOnly references={referenceOptions} />
+                <RecordForm descriptor={contactDescriptor} record={selectedWithTags ?? {}} readOnly references={referenceOptions} />
               )}
 
               <h2 style={{ margin: '20px 0 12px', fontSize: 15, color: '#374151' }}>Version history</h2>

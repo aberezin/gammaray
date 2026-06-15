@@ -22,7 +22,9 @@ export const tagDescriptor: TableDescriptor = {
 // WholeRow merge is fine.
 export const contactTagDescriptor: TableDescriptor = {
   table: 'contact_tag',
-  collection: 'contactTag',
+  // RxDB collection names must be lowercase (^[a-z][_$a-z0-9-]*$); the
+  // subscription field is derived as `${collection}Updated`.
+  collection: 'contact_tag',
   listField: 'contactTags',
   identity: { field: 'id', clientGenerated: true },
   mergeStrategy: MergeStrategyKind.WholeRow,

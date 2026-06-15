@@ -15,7 +15,9 @@ interface Props {
 // "server" value, highlighting the ones that differ, and lets the user keep
 // either side. (Field-level merge is a later strategy.)
 export function RecordConflictBanner({ descriptor, mine, theirs, onKeepMine, onKeepTheirs }: Props) {
-  const fields = descriptor.fields.filter((f) => !f.readOnly && f.kind !== FieldKind.Uuid)
+  const fields = descriptor.fields.filter(
+    (f) => !f.readOnly && f.kind !== FieldKind.Uuid && f.kind !== FieldKind.MultiReference,
+  )
   const mineDeleted = mine.deleted === true
   const theirsDeleted = theirs.deleted === true
 

@@ -8,6 +8,8 @@ export function rxSchemaFromDescriptor(d: TableDescriptor): RxJsonSchema<RowReco
   const properties: Record<string, Record<string, unknown>> = {}
 
   for (const f of d.fields) {
+    // MultiReference is virtual (materialized in a join table) — no column.
+    if (f.kind === FieldKind.MultiReference) continue
     switch (f.kind) {
       case FieldKind.Int:
         properties[f.name] = { type: 'integer', default: 0 }
