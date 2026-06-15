@@ -101,6 +101,13 @@ Auth is fully stateless JWT. No server-side session storage.
 | `packages/database/src/migrations/` | TypeORM migration files |
 | `platform-architecture.md` | Architecture decision log — update when decisions change |
 
+## SDLC
+
+### Branching
+
+- **Major version upgrades** (framework, runtime, major dependency): create a feature branch (e.g. `chore/next-upgrade-16`), commit there, then ask for review before merging. This gives a checkpoint to assess risk.
+- **Other changes**: commit directly to main per the workflow ("commit after each major change; PRs only when asked").
+
 ## Notes
 
 - Two frontend applications (`apps/app-one`, `apps/app-two` placeholder) share one backend and must communicate only through it.
