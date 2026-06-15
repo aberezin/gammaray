@@ -83,6 +83,7 @@ function toContactModel(e: ContactEntity): ContactModel {
   m.email = e.email
   m.phone = e.phone
   m.version = e.version
+  m.companyId = e.companyId ?? null
   m.deleted = e.deleted
   m.createdAt = toIso(e.createdAt)
   m.updatedAt = toIso(e.updatedAt)

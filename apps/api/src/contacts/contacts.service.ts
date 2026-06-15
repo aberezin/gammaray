@@ -71,6 +71,7 @@ export class ContactsService {
             lastName: input.lastName,
             email: input.email,
             phone: input.phone,
+            companyId: input.companyId ?? null,
             version: 1,
           }),
         )
@@ -117,11 +118,13 @@ export class ContactsService {
         // Auto-merged (e.g. disjoint fields) — apply the merged row.
         const nextVersion = existing.version + 1
         const m = result.merged
+        const mCompanyId = (m.companyId ?? null) as string | null
         await contactRepo.update(existing.id, {
           firstName: String(m.firstName ?? ''),
           lastName: String(m.lastName ?? ''),
           email: String(m.email ?? ''),
           phone: String(m.phone ?? ''),
+          companyId: mCompanyId,
           version: nextVersion,
         })
         const merged = {
@@ -130,6 +133,7 @@ export class ContactsService {
           lastName: String(m.lastName ?? ''),
           email: String(m.email ?? ''),
           phone: String(m.phone ?? ''),
+          companyId: mCompanyId,
           version: nextVersion,
         } as ContactEntity
         await revRepo.save(
@@ -166,6 +170,7 @@ export class ContactsService {
         lastName: input.lastName,
         email: input.email,
         phone: input.phone,
+        companyId: input.companyId ?? null,
         version: nextVersion,
       })
       const updated = { ...existing, ...incoming(input), version: nextVersion } as ContactEntity
@@ -203,6 +208,7 @@ export class ContactsService {
         lastName: input.lastName,
         email: input.email,
         phone: input.phone,
+        companyId: input.companyId ?? null,
         deleted: input.deleted,
         version: nextVersion,
       })
@@ -255,6 +261,7 @@ function incoming(input: ContactInput): Record<string, unknown> {
     lastName: input.lastName,
     email: input.email,
     phone: input.phone,
+    companyId: input.companyId ?? null,
   }
 }
 
@@ -265,6 +272,7 @@ function snapshot(c: ContactEntity): Record<string, unknown> {
     lastName: c.lastName,
     email: c.email,
     phone: c.phone,
+    companyId: c.companyId ?? null,
     version: c.version,
     deleted: c.deleted,
   }

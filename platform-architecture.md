@@ -58,6 +58,9 @@ hold the detailed argument for individual decisions.
   rows tracked per-field (not opaque blobs); clients mint primary keys for offline create.
 - [ADR 0004 — Merge strategy as per-table policy](./docs/adr/0004-merge-strategy-as-table-policy.md):
   WholeRow default, DisjointFields auto-merge opt-in; mechanism vs. policy.
+- [ADR 0005 — Soft (un-enforced) foreign-key references](./docs/adr/0005-soft-foreign-key-references.md):
+  many-to-one as a nullable reference field, no DB FK constraint; the FK rides
+  field sync/merge. Enforced integrity + cross-collection ordering deferred.
 
 ## Performance & Capacity (load testing)
 

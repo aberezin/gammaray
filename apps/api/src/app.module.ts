@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module'
 import { UsersModule } from './users/users.module'
 import { NotesModule } from './notes/notes.module'
 import { ContactsModule } from './contacts/contacts.module'
+import { CompaniesModule } from './companies/companies.module'
 import { SyncModule } from './sync/sync.module'
 
 @Module({
@@ -48,6 +49,7 @@ import { SyncModule } from './sync/sync.module'
     UsersModule,
     NotesModule,
     ContactsModule,
+    CompaniesModule,
     SyncModule,
   ],
 })

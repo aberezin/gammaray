@@ -36,9 +36,26 @@ export function ContactsPageClient({ accessToken }: Props) {
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({})
   const [conflict, setConflict] = useState<ContactConflict | null>(null)
   const [offline, setOffline] = useState(false)
+  const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([])
   const gqlClient = useRef(makeGqlClient(accessToken))
   const clientId = useRef<string>(crypto.randomUUID())
   const replicationRef = useRef<ReturnType<typeof startContactReplication> | null>(null)
+
+  // Load companies for the reference picker (read-only lookup data).
+  useEffect(() => {
+    let active = true
+    gqlClient.current
+      .request<{ companies: Array<{ id: string; name: string }> }>('query { companies { id name } }')
+      .then((d) => {
+        if (active) setCompanies(d.companies)
+      })
+      .catch(() => {
+        /* ignore */
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   // Local subscription — always on, so the list reflects local data even offline.
   useEffect(() => {
@@ -98,6 +115,14 @@ export function ContactsPageClient({ accessToken }: Props) {
   const selected = records.find((r) => r.id === selectedId) ?? null
   const selectedVersion = selected ? Number(selected.version ?? 0) : null
 
+  // Reference field maps for the company picker (options) and the list (labels).
+  const referenceOptions = {
+    companyId: companies.map((c) => ({ value: c.id, label: c.name })),
+  }
+  const referenceLabels = {
+    companyId: Object.fromEntries(companies.map((c) => [c.id, c.name])),
+  }
+
   // Fetch the selected record's version history. Re-fetches when its version
   // changes (e.g. after an edit reconciles) so history stays current.
   useEffect(() => {
@@ -149,6 +174,7 @@ export function ContactsPageClient({ accessToken }: Props) {
         lastName: String(editDraft.lastName ?? ''),
         email: String(editDraft.email ?? ''),
         phone: String(editDraft.phone ?? ''),
+        companyId: editDraft.companyId ? String(editDraft.companyId) : null,
       })
     }
     setEditing(false)
@@ -175,6 +201,7 @@ export function ContactsPageClient({ accessToken }: Props) {
       lastName: String(draft.lastName ?? ''),
       email: String(draft.email ?? ''),
       phone: String(draft.phone ?? ''),
+      companyId: draft.companyId ? String(draft.companyId) : null,
       version: 0,
       updatedAt: new Date().toISOString(),
       _deleted: false,
@@ -235,6 +262,7 @@ export function ContactsPageClient({ accessToken }: Props) {
             records={records}
             selectedId={selectedId}
             onSelect={select}
+            references={referenceLabels}
           />
         </div>
 
@@ -247,6 +275,7 @@ export function ContactsPageClient({ accessToken }: Props) {
                 record={draft}
                 readOnly={false}
                 onChange={(field, value) => setDraft((d) => ({ ...d, [field]: value }))}
+                references={referenceOptions}
               />
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button
@@ -292,6 +321,7 @@ export function ContactsPageClient({ accessToken }: Props) {
                     record={editDraft}
                     readOnly={false}
                     onChange={(field, value) => setEditDraft((d) => ({ ...d, [field]: value }))}
+                    references={referenceOptions}
                   />
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button
@@ -309,7 +339,7 @@ export function ContactsPageClient({ accessToken }: Props) {
                   </div>
                 </>
               ) : (
-                <RecordForm descriptor={contactDescriptor} record={selected} readOnly />
+                <RecordForm descriptor={contactDescriptor} record={selected} readOnly references={referenceOptions} />
               )}
 
               <h2 style={{ margin: '20px 0 12px', fontSize: 15, color: '#374151' }}>Version history</h2>

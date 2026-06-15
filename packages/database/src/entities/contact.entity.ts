@@ -31,6 +31,13 @@ export class ContactEntity {
   @Column({ type: 'int', default: 0 })
   version!: number
 
+  /**
+   * Many-to-one soft reference to a company (no enforced DB FK — integrity is
+   * advisory, see ADR-to-come). Nullable; a dangling id renders as unknown.
+   */
+  @Column({ type: 'uuid', nullable: true, name: 'company_id' })
+  companyId?: string | null
+
   /** Soft-delete tombstone; retained so deletions replicate and history survives. */
   @Column({ type: 'boolean', default: false })
   deleted!: boolean

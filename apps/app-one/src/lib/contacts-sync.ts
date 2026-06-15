@@ -128,6 +128,7 @@ export function startContactReplication(
           lastName: String(doc.lastName ?? ''),
           email: String(doc.email ?? ''),
           phone: String(doc.phone ?? ''),
+          companyId: doc.companyId ? String(doc.companyId) : null,
           deleted: doc._deleted === true,
         }
 
