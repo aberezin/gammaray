@@ -200,13 +200,13 @@ export function startRowReplication(
   coordinator: BatchCoordinator,
 ) {
   coordinator.register(descriptor)
-  // Virtual fields (MultiReference) aren't columns — exclude from the wire query.
-  const fields = descriptor.fields
-    .filter((f) => f.kind !== FieldKind.MultiReference)
-    .map((f) => f.name)
-    .join(' ')
-  const PULL = `query { ${descriptor.listField} { ${fields} deleted } }`
-  const SUB = `subscription { ${descriptor.collection}Updated { ${fields} deleted } }`
+  // Reads/live go through the generic engine: one rows(table)/rowUpdated(table)
+  // pair over a JSON scalar, keyed by the descriptor's table. The server projects
+  // each row to the descriptor's wire shape (stored fields + deleted), so the
+  // payload matches what the old typed per-table queries returned.
+  const table = descriptor.table
+  const PULL = `query Rows($table: String!) { rows(table: $table) }`
+  const SUB = `subscription RowUpdated($table: String!) { rowUpdated(table: $table) }`
 
   const wsClient = createClient({
     url: `${WS_URL}/graphql`,
@@ -227,16 +227,16 @@ export function startRowReplication(
     pull: {
       batchSize: 1000,
       async handler() {
-        const data = await gqlClient.request<Record<string, Array<RowRecord & { deleted?: boolean }>>>(PULL)
-        const documents = (data[descriptor.listField] ?? []).map(toDoc)
+        const data = await gqlClient.request<{ rows: Array<RowRecord & { deleted?: boolean }> }>(PULL, { table })
+        const documents = (data.rows ?? []).map(toDoc)
         return { documents, checkpoint: { pulledAt: new Date().toISOString() } }
       },
       stream$: new Observable((subscriber) => {
-        const unsub = wsClient.subscribe<Record<string, RowRecord & { deleted?: boolean }>>(
-          { query: SUB },
+        const unsub = wsClient.subscribe<{ rowUpdated: RowRecord & { deleted?: boolean } }>(
+          { query: SUB, variables: { table } },
           {
             next: ({ data }) => {
-              const row = data?.[`${descriptor.collection}Updated`]
+              const row = data?.rowUpdated
               if (row) {
                 subscriber.next({ documents: [toDoc(row)], checkpoint: { pulledAt: new Date().toISOString() } })
               }

@@ -1,11 +1,16 @@
-import { Resolver, Query, Mutation, Subscription, Args } from '@nestjs/graphql'
+import { Resolver, Query, Mutation, Args } from '@nestjs/graphql'
 import { UseGuards } from '@nestjs/common'
 import { ContactEntity, ContactRevisionEntity } from '@gammaray/database'
+import { contactDescriptor } from '@gammaray/core'
 import { ContactsService } from './contacts.service'
 import { ContactModel, ContactRevisionModel, ContactInput } from './contact.model'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { SyncBroker } from '../sync/sync.broker'
+import { projectToDescriptor } from '../engine/project'
 
+// Contacts read/list live through the generic engine (rows/rowUpdated). What
+// stays bespoke here is the revision history and conflict resolution — the parts
+// the generic flat engine doesn't (yet) cover.
 @Resolver(() => ContactModel)
 @UseGuards(JwtAuthGuard)
 export class ContactsResolver {
@@ -13,17 +18,6 @@ export class ContactsResolver {
     private readonly service: ContactsService,
     private readonly broker: SyncBroker,
   ) {}
-
-  @Query(() => [ContactModel])
-  async contacts(): Promise<ContactModel[]> {
-    return (await this.service.listContacts()).map(toContactModel)
-  }
-
-  @Query(() => ContactModel, { nullable: true })
-  async contact(@Args('id') id: string): Promise<ContactModel | null> {
-    const c = await this.service.getContact(id)
-    return c ? toContactModel(c) : null
-  }
 
   @Query(() => [ContactRevisionModel])
   async contactRevisions(
@@ -38,14 +32,8 @@ export class ContactsResolver {
     @Args('clientId') clientId: string,
   ): Promise<ContactModel> {
     const resolved = toContactModel(await this.service.resolveContactConflict(input, clientId))
-    this.broker.emitContact(resolved)
+    this.broker.emitRow('contact', projectToDescriptor(contactDescriptor, resolved as unknown as Record<string, unknown>))
     return resolved
-  }
-
-  @Subscription(() => ContactModel)
-  contactUpdated() {
-    // Contacts are a shared dataset — a single global channel, no per-user filter.
-    return this.broker.contactAsyncIterator()
   }
 }
 

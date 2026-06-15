@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, EntityManager, Repository, Not, In } from 'typeorm'
+import { DataSource, EntityManager, Repository, Not } from 'typeorm'
 import { ContactEntity, ContactRevisionEntity } from '@gammaray/database'
 import { ConflictStatus, contactDescriptor, mergeRows } from '@gammaray/core'
 import { ContactInput } from './contact.model'
@@ -12,35 +12,16 @@ import { ApplyOutcome, RowChangeInput } from '../batch/batch.types'
 @Injectable()
 export class ContactsService {
   constructor(
-    @InjectRepository(ContactEntity)
-    private readonly contacts: Repository<ContactEntity>,
     @InjectRepository(ContactRevisionEntity)
     private readonly revisions: Repository<ContactRevisionEntity>,
     private readonly dataSource: DataSource,
   ) {}
-
-  listContacts(): Promise<ContactEntity[]> {
-    return this.contacts.find({ order: { updatedAt: 'DESC' } })
-  }
-
-  getContact(id: string): Promise<ContactEntity | null> {
-    return this.contacts.findOneBy({ id })
-  }
 
   getContactRevisions(contactId: string): Promise<ContactRevisionEntity[]> {
     return this.revisions.find({
       where: { contactId },
       order: { createdAt: 'DESC' },
     })
-  }
-
-  async existingIds(manager: EntityManager, ids: string[]): Promise<Set<string>> {
-    if (ids.length === 0) return new Set()
-    const rows = await manager.getRepository(ContactEntity).find({
-      where: { id: In(ids) },
-      select: { id: true },
-    })
-    return new Set(rows.map((r) => r.id))
   }
 
   // Apply one contact change against the given transaction manager (no tx of its
