@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 GammaRay is a POC whose goal is to develop a reliable tech stack that can be coded by agents (the engineering team is Alan Berezin plus various agents). The first application is **NoteSync** — a single-textarea note per user with full version history, designed to exercise offline-first sync and conflict resolution.
 
+## Local machine
+
+Read `LOCAL.md` (git-ignored; template in `LOCAL.example.md`) for machine-specific nuances — package manager, where global tools live, PATH quirks, and local service setup. It captures environment details (e.g. MacPorts vs Homebrew, the language-server PATH) that aren't derivable from the code.
+
 ## Commands
 
 ```bash
