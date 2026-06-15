@@ -5,6 +5,7 @@ import { FieldKind, MergeStrategyKind, TableDescriptor } from './descriptors'
 export const companyDescriptor: TableDescriptor = {
   table: 'company',
   collection: 'company',
+  listField: 'companies',
   identity: { field: 'id', clientGenerated: true },
   mergeStrategy: MergeStrategyKind.WholeRow,
   display: { titleFields: ['name'] },

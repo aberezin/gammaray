@@ -31,6 +31,7 @@ function toCompanyModel(e: CompanyEntity): CompanyModel {
   m.id = e.id
   m.name = e.name
   m.version = e.version
+  m.deleted = e.deleted
   m.updatedAt = e.updatedAt instanceof Date ? e.updatedAt.toISOString() : String(e.updatedAt)
   return m
 }
