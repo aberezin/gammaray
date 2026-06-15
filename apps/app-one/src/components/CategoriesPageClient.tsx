@@ -7,6 +7,8 @@ import { categoryDescriptor, type RowRecord } from '@gammaray/core'
 import { getDatabase } from '@/lib/rxdb'
 import { startRowReplication, BatchCoordinator } from '@/lib/batch-sync'
 import { makeGqlClient } from '@/lib/graphql-client'
+import { getAccessToken, primeToken } from '@/lib/token'
+import { useSyncHealth } from '@/store/sync-health.store'
 
 interface Props {
   accessToken: string
@@ -16,11 +18,13 @@ interface Props {
 // reference flow through the batch coordinator, so a parent and child created
 // offline sync together (validated against DB ∪ batch).
 export function CategoriesPageClient({ accessToken }: Props) {
+  primeToken(accessToken)
+  const suspect = useSyncHealth((s) => s.status === 'suspect')
   const [records, setRecords] = useState<RowRecord[]>([])
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<Record<string, unknown>>({})
   const [offline, setOffline] = useState(false)
-  const gqlClient = useRef(makeGqlClient(accessToken))
+  const gqlClient = useRef(makeGqlClient())
   const clientId = useRef<string>(crypto.randomUUID())
 
   // Local subscription — always on (works offline).
@@ -48,7 +52,7 @@ export function CategoriesPageClient({ accessToken }: Props) {
       const db = await getDatabase()
       if (!active) return
       const coordinator = new BatchCoordinator(gqlClient.current, clientId.current)
-      started = startRowReplication(categoryDescriptor, db.category, gqlClient.current, accessToken, coordinator)
+      started = startRowReplication(categoryDescriptor, db.category, gqlClient.current, getAccessToken, coordinator)
       if (!active) {
         void started.replication.cancel()
         void started.wsClient.dispose()
@@ -69,6 +73,7 @@ export function CategoriesPageClient({ accessToken }: Props) {
   const referenceLabels = { parentId: Object.fromEntries(records.map((r) => [String(r.id), String(r.name ?? '')])) }
 
   async function handleSave() {
+    if (suspect) return
     const id = crypto.randomUUID()
     const db = await getDatabase()
     await db.category.insert({
@@ -89,8 +94,9 @@ export function CategoriesPageClient({ accessToken }: Props) {
         <h1 style={{ margin: 0, fontSize: 20 }}>Categories</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
-            onClick={() => { setDraft({}); setCreating(true) }}
-            style={{ fontSize: 13, padding: '6px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
+            onClick={() => { if (suspect) return; setDraft({}); setCreating(true) }}
+            disabled={suspect}
+            style={{ fontSize: 13, padding: '6px 12px', background: suspect ? '#e5e7eb' : '#3b82f6', color: suspect ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, cursor: suspect ? 'not-allowed' : 'pointer', fontWeight: 500 }}
           >
             New category
           </button>
@@ -112,7 +118,8 @@ export function CategoriesPageClient({ accessToken }: Props) {
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button
               onClick={() => void handleSave()}
-              style={{ fontSize: 13, padding: '6px 14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}
+              disabled={suspect}
+              style={{ fontSize: 13, padding: '6px 14px', background: suspect ? '#e5e7eb' : '#10b981', color: suspect ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, cursor: suspect ? 'not-allowed' : 'pointer', fontWeight: 500 }}
             >
               Save
             </button>

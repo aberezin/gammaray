@@ -7,6 +7,8 @@ import { NoteEditor, RevisionList, ConflictBanner, OfflineToggle, SyncIndicator 
 import { SyncStatus } from '@gammaray/core'
 import { useNoteStore } from '@/store/note.store'
 import { makeGqlClient } from '@/lib/graphql-client'
+import { getAccessToken, primeToken } from '@/lib/token'
+import { useSyncHealth } from '@/store/sync-health.store'
 import { startReplication, resolveConflict } from '@/lib/sync'
 import { getDatabase } from '@/lib/rxdb'
 import type { RevisionDto } from '@gammaray/core'
@@ -20,7 +22,9 @@ interface Props {
 const FLUSH_DEBOUNCE_MS = 400
 
 export function NotePageClient({ accessToken }: Props) {
+  primeToken(accessToken)
   const { syncStatus, conflict, offline, setSyncStatus, setConflict, setOffline } = useNoteStore()
+  const suspect = useSyncHealth((s) => s.status === 'suspect')
   const [content, setContent] = useState('')
   const [revisions, setRevisions] = useState<RevisionDto[]>([])
   const replicationRef = useRef<ReturnType<typeof startReplication> | null>(null)
@@ -43,7 +47,7 @@ export function NotePageClient({ accessToken }: Props) {
         })())
       : crypto.randomUUID(),
   )
-  const gqlClient = useRef(makeGqlClient(accessToken))
+  const gqlClient = useRef(makeGqlClient())
 
   const fetchRevisions = useCallback(async () => {
     try {
@@ -128,7 +132,7 @@ export function NotePageClient({ accessToken }: Props) {
       const started = startReplication(
         collection,
         gqlClient.current,
-        accessToken,
+        getAccessToken,
         clientId.current,
         ({ serverContent, serverVersion, noteId, clientContent }) => {
           setConflict({ noteId, serverContent, serverVersion, clientContent })
@@ -160,7 +164,7 @@ export function NotePageClient({ accessToken }: Props) {
       if (wsClient) void wsClient.dispose()
       replicationRef.current = null
     }
-  }, [offline, accessToken, fetchRevisions, setConflict, setSyncStatus])
+  }, [offline, fetchRevisions, setConflict, setSyncStatus])
 
   // Flush any pending edit on unmount so the last keystrokes aren't lost.
   useEffect(() => {
@@ -171,6 +175,8 @@ export function NotePageClient({ accessToken }: Props) {
   }, [flushEdit])
 
   function handleChange(value: string) {
+    // Read-only while the local store is suspect.
+    if (suspect) return
     // Reflect the keystroke immediately for a responsive editor.
     setContent(value)
     // Record as the latest unsynced edit and debounce the actual RxDB write so a
@@ -232,6 +238,7 @@ export function NotePageClient({ accessToken }: Props) {
   }
 
   async function handleRestore(content: string) {
+    if (suspect) return
     setContent(content)
     const db = await getDatabase()
     const doc = await db.note.findOne().exec()
@@ -271,6 +278,7 @@ export function NotePageClient({ accessToken }: Props) {
             content={content}
             onChange={handleChange}
             syncStatus={syncStatus}
+            disabled={suspect}
           />
         </div>
         <div>

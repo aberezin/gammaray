@@ -4,6 +4,8 @@ import { Observable } from 'rxjs'
 import type { RxCollection, WithDeleted } from 'rxdb'
 import type { GraphQLClient } from 'graphql-request'
 import { FieldKind, type RowRecord, type TableDescriptor } from '@gammaray/core'
+import { getAccessToken, type TokenGetter } from './token'
+import { syncHealth } from '@/store/sync-health.store'
 
 type SyncDoc = WithDeleted<RowRecord>
 
@@ -194,7 +196,7 @@ export function startRowReplication(
   descriptor: TableDescriptor,
   collection: RxCollection<RowRecord>,
   gqlClient: GraphQLClient,
-  accessToken: string,
+  getToken: TokenGetter,
   coordinator: BatchCoordinator,
 ) {
   coordinator.register(descriptor)
@@ -208,7 +210,8 @@ export function startRowReplication(
 
   const wsClient = createClient({
     url: `${WS_URL}/graphql`,
-    connectionParams: { Authorization: `Bearer ${accessToken}` },
+    // A fresh token per (re)connect, so the live stream survives token rotation.
+    connectionParams: async () => ({ Authorization: `Bearer ${await getToken()}` }),
   })
 
   const toDoc = (row: RowRecord & { deleted?: boolean }): SyncDoc => {
@@ -249,6 +252,15 @@ export function startRowReplication(
       batchSize: 50,
       handler: (rows) => coordinator.enqueue(descriptor.table, rows),
     },
+  })
+
+  // Replication-level errors (pull/stream/push transport) — the gql client
+  // already reports request errors, but pull retries and the WS stream surface
+  // here too. Anything other than an auth error (handled by the token getter) is
+  // a server/network failure → the local replica is suspect.
+  replication.error$.subscribe((err) => {
+    const message = (err as { message?: string })?.message ?? 'replication error'
+    if (!/unauthor|401/i.test(message)) syncHealth.markSuspect('server', message)
   })
 
   return { replication, wsClient }
