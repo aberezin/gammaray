@@ -60,32 +60,30 @@ A single **transactional batch endpoint**: `pushBatch(changes, clientId)`.
   versions itself (RxDB's reconcile lags after a batched push), and must project
   reconciled rows to the schema (the server returns the full entity).
 
-## Known limitation — self-references and cycles
+## Self-references and cycles — resolved
 
-This is **not yet handled**, and it's a deliberate, bounded gap. The per-row
-reference check (`applyContactChange` looks up the referenced company *in the
-current transaction state*) is **order-dependent**: it only passes if the
-referenced row was already applied earlier in the batch. The cross-table topo
-order guarantees that for acyclic cross-table references (parents applied first),
-but:
+This was originally recorded as a bounded gap: the per-row reference check
+(`applyContactChange` looked up the referenced company *in the current
+transaction state*) was **order-dependent** — it only passed if the referenced
+row had already been applied earlier in the batch. The cross-table topo order
+covered acyclic cross-table references (parents applied first), but not:
 
 - **Self-referential tables** (e.g. `category.parent_id → category`, a tree):
-  there is no table-level order that helps — correctness needs *row-level*
-  ordering (a node after its parent row), which the batch does not do (it applies
-  rows in buffer order). A child applied before its parent is spuriously
+  no table-level order helps — a child applied before its parent was spuriously
   REJECTED.
-- **Cycles between tables** (A→B and B→A): no topological order exists; whichever
-  table is applied second has its references checked against rows not yet
-  inserted → spurious REJECT.
+- **Cycles between tables** (A→B and B→A): no topological order exists, so
+  whichever table applied second was checked against rows not yet inserted.
 
-The *deferred constraint already supports* these cases (commit-time validation is
-order-independent); it's the explicit per-row pre-check — added to give graceful,
-attributable REJECTED instead of an unattributable commit failure — that
-re-introduces order dependence.
+**Fix (shipped with the `category` self-referential tree).** Reference
+validation moved out of the per-applier path and into the coordinator
+(`BatchService.validateReferences`). Each upsert's reference targets are checked
+against `willExist = existing DB ids ∪ all upsert ids in this batch`, with a
+**fixpoint loop**: when a row is rejected its id is removed from `willExist`, so
+dependents pointing at a rejected row are rejected transitively. This is
+order-independent — child-before-parent within a batch is valid because the
+parent is in the batch set — and the deferred constraint confirms at commit.
+Per-row attribution is preserved (each bad row gets its own REJECTED + reason).
 
-**Fix path (when a self-ref/cyclic table is introduced):** validate each row's
-references against `existing DB ids ∪ all ids created in this batch`, rather than
-against the incremental transaction state. Then child-before-parent within a
-batch is valid (the parent is in the batch set), the deferred constraint confirms
-at commit, and per-row attribution is preserved. No such table exists today, so
-this is recorded rather than built.
+Verified end to end: a batch listing a child *before* its parent applies both
+(`apps/app-one/tests/categories-tree.spec.ts`), and a category with a bogus
+`parentId` is REJECTED with `missing reference category:<id>`.

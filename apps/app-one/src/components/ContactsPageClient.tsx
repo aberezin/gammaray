@@ -263,6 +263,7 @@ export function ContactsPageClient({ accessToken }: Props) {
             New contact
           </button>
           <OfflineToggle offline={offline} onToggle={setOffline} />
+          <Link href="/categories" style={{ fontSize: 13, color: '#3b82f6' }}>Categories →</Link>
           <Link href="/" style={{ fontSize: 13, color: '#3b82f6' }}>← Notes</Link>
         </div>
       </header>
