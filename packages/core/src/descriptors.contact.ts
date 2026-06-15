@@ -17,6 +17,12 @@ export const contactDescriptor: TableDescriptor = {
     { name: 'lastName', label: 'Last name', kind: FieldKind.String, required: true },
     { name: 'email', label: 'Email', kind: FieldKind.Email },
     { name: 'phone', label: 'Phone', kind: FieldKind.Phone },
+    {
+      name: 'companyId',
+      label: 'Company',
+      kind: FieldKind.Reference,
+      references: { collection: 'company', titleField: 'name' },
+    },
     { name: 'version', label: 'Version', kind: FieldKind.Int, readOnly: true },
     { name: 'updatedAt', label: 'Updated', kind: FieldKind.Timestamp, readOnly: true },
   ],

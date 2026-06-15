@@ -13,6 +13,8 @@ export enum FieldKind {
   Int = 'int',
   Boolean = 'boolean',
   Timestamp = 'timestamp',
+  /** Many-to-one reference: the field holds another row's id (a soft FK). */
+  Reference = 'reference',
 }
 
 // How concurrent edits to the same row are reconciled. The 3-way merge runs at
@@ -35,6 +37,8 @@ export interface FieldDescriptor {
   /** Not user-editable (id, version, timestamps). */
   readOnly?: boolean
   required?: boolean
+  /** For Reference fields: the referenced table and which field labels a row. */
+  references?: { collection: string; titleField: string }
 }
 
 export interface TableDescriptor {

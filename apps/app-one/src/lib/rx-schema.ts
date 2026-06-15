@@ -5,7 +5,7 @@ import { FieldKind, type TableDescriptor, type RowRecord } from '@gammaray/core'
 // half of "schema-driven". One source of truth (the descriptor) drives the
 // server model, the client rendering, and the local store shape.
 export function rxSchemaFromDescriptor(d: TableDescriptor): RxJsonSchema<RowRecord> {
-  const properties: Record<string, { type: string; default?: unknown; maxLength?: number }> = {}
+  const properties: Record<string, Record<string, unknown>> = {}
 
   for (const f of d.fields) {
     switch (f.kind) {
@@ -14,6 +14,10 @@ export function rxSchemaFromDescriptor(d: TableDescriptor): RxJsonSchema<RowReco
         break
       case FieldKind.Boolean:
         properties[f.name] = { type: 'boolean', default: false }
+        break
+      case FieldKind.Reference:
+        // A soft FK: the referenced id, or null when unset.
+        properties[f.name] = { type: ['string', 'null'] }
         break
       default:
         properties[f.name] = { type: 'string' }
