@@ -15,6 +15,14 @@ export enum FieldKind {
   Timestamp = 'timestamp',
   /** Many-to-one reference: the field holds another row's id (a soft FK). */
   Reference = 'reference',
+  /**
+   * Many-to-many reference, materialized through a join table. A *virtual*
+   * field: it is not a column on this row and is skipped by all storage and
+   * transport (RxDB schema, GraphQL pull/push, merge). The UI renders it as a
+   * multi-select and the page reconciles it into join rows. Its value is an
+   * array of target ids. See `via` for the join descriptor.
+   */
+  MultiReference = 'multi-reference',
 }
 
 // How concurrent edits to the same row are reconciled. The 3-way merge runs at
@@ -39,6 +47,19 @@ export interface FieldDescriptor {
   required?: boolean
   /** For Reference fields: the referenced table and which field labels a row. */
   references?: { collection: string; titleField: string }
+  /**
+   * For MultiReference fields: the join table that materializes the relation.
+   * `localField`/`remoteField` are the two reference fields on the join row
+   * (this row's id and the target's id); `targetCollection`/`titleField` say
+   * what to offer and how to label it.
+   */
+  via?: {
+    joinCollection: string
+    localField: string
+    remoteField: string
+    targetCollection: string
+    titleField: string
+  }
 }
 
 export interface TableDescriptor {

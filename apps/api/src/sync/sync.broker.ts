@@ -4,11 +4,15 @@ import { NoteModel } from '../notes/note.model'
 import { ContactModel } from '../contacts/contact.model'
 import { CompanyModel } from '../companies/company.model'
 import { CategoryModel } from '../categories/category.model'
+import { TagModel } from '../tags/tag.model'
+import { ContactTagModel } from '../contact-tags/contact-tag.model'
 
 const NOTE_UPDATED = 'noteUpdated'
 const CONTACT_UPDATED = 'contactUpdated'
 const COMPANY_UPDATED = 'companyUpdated'
 const CATEGORY_UPDATED = 'categoryUpdated'
+const TAG_UPDATED = 'tagUpdated'
+const CONTACT_TAG_UPDATED = 'contactTagUpdated'
 
 /**
  * Thin abstraction over a pub/sub backend.
@@ -52,6 +56,22 @@ export class SyncBroker implements OnModuleDestroy {
 
   categoryAsyncIterator() {
     return this.pubSub.asyncIterator(CATEGORY_UPDATED)
+  }
+
+  emitTag(tag: TagModel): void {
+    void this.pubSub.publish(TAG_UPDATED, { tagUpdated: tag })
+  }
+
+  tagAsyncIterator() {
+    return this.pubSub.asyncIterator(TAG_UPDATED)
+  }
+
+  emitContactTag(link: ContactTagModel): void {
+    void this.pubSub.publish(CONTACT_TAG_UPDATED, { contactTagUpdated: link })
+  }
+
+  contactTagAsyncIterator() {
+    return this.pubSub.asyncIterator(CONTACT_TAG_UPDATED)
   }
 
   onModuleDestroy() {

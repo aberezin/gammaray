@@ -8,6 +8,8 @@ import { NotesModule } from './notes/notes.module'
 import { ContactsModule } from './contacts/contacts.module'
 import { CompaniesModule } from './companies/companies.module'
 import { CategoriesModule } from './categories/categories.module'
+import { TagsModule } from './tags/tags.module'
+import { ContactTagsModule } from './contact-tags/contact-tags.module'
 import { BatchModule } from './batch/batch.module'
 import { SyncModule } from './sync/sync.module'
 
@@ -53,6 +55,8 @@ import { SyncModule } from './sync/sync.module'
     ContactsModule,
     CompaniesModule,
     CategoriesModule,
+    TagsModule,
+    ContactTagsModule,
     BatchModule,
     SyncModule,
   ],

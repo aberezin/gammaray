@@ -5,16 +5,22 @@ import {
   contactDescriptor,
   companyDescriptor,
   categoryDescriptor,
+  tagDescriptor,
+  contactTagDescriptor,
   dependencyOrder,
   type TableDescriptor,
 } from '@gammaray/core'
 import { ContactsService } from '../contacts/contacts.service'
 import { CompaniesService } from '../companies/companies.service'
 import { CategoriesService } from '../categories/categories.service'
+import { TagsService } from '../tags/tags.service'
+import { ContactTagsService } from '../contact-tags/contact-tags.service'
 import { SyncBroker } from '../sync/sync.broker'
 import { ContactModel } from '../contacts/contact.model'
 import { CompanyModel } from '../companies/company.model'
 import { CategoryModel } from '../categories/category.model'
+import { TagModel } from '../tags/tag.model'
+import { ContactTagModel } from '../contact-tags/contact-tag.model'
 import type { ApplyOutcome, RowChangeInput } from './batch.types'
 
 interface RegistryEntry {
@@ -52,6 +58,8 @@ export class BatchService {
     private readonly contacts: ContactsService,
     private readonly companies: CompaniesService,
     private readonly categories: CategoriesService,
+    private readonly tags: TagsService,
+    private readonly contactTags: ContactTagsService,
     private readonly broker: SyncBroker,
   ) {
     this.registry = {
@@ -73,8 +81,26 @@ export class BatchService {
         existing: (m, ids) => this.categories.existingIds(m, ids),
         emit: (row) => this.broker.emitCategory(row as unknown as CategoryModel),
       },
+      tag: {
+        descriptor: tagDescriptor,
+        apply: (m, c, cid) => this.tags.applyTagChange(m, c, cid),
+        existing: (m, ids) => this.tags.existingIds(m, ids),
+        emit: (row) => this.broker.emitTag(row as unknown as TagModel),
+      },
+      contact_tag: {
+        descriptor: contactTagDescriptor,
+        apply: (m, c, cid) => this.contactTags.applyContactTagChange(m, c, cid),
+        existing: (m, ids) => this.contactTags.existingIds(m, ids),
+        emit: (row) => this.broker.emitContactTag(row as unknown as ContactTagModel),
+      },
     }
-    this.tableOrder = dependencyOrder([companyDescriptor, contactDescriptor, categoryDescriptor])
+    this.tableOrder = dependencyOrder([
+      companyDescriptor,
+      contactDescriptor,
+      categoryDescriptor,
+      tagDescriptor,
+      contactTagDescriptor,
+    ])
   }
 
   async pushBatch(changes: RowChangeInput[], clientId: string): Promise<BatchRowResult[]> {
