@@ -50,6 +50,28 @@ machine, and metrics) and update the headline summary in
 [`load-tests/README.md`](./load-tests/README.md). Keeping the log current is what
 lets the next person or agent tell an intentional change from a regression.
 
+### Agents
+
+This repo is built by Claude Code agents alongside the human engineer, so the
+agent toolchain is part of the SDLC.
+
+**TypeScript LSP.** Agents use a TypeScript language server for code intelligence
+— go-to-definition, find-references, hover types, and automatic post-edit
+diagnostics — rather than relying on grep + per-package `tsc --noEmit`. It is the
+`typescript-lsp@claude-plugins-official` plugin, enabled for the project in
+[`.claude/settings.json`](./.claude/settings.json) so every agent/teammate gets
+it. Setup:
+
+```bash
+npm install -g typescript-language-server typescript   # the language server binary
+# the plugin is already enabled in .claude/settings.json; restart Claude Code to load it
+```
+
+Cross-package `@gammaray/*` resolution relies on the workspace packages being
+built (`core`/`database`/`auth` resolve via their emitted `.d.ts`, with
+`declarationMap` jumping to source; `ui` resolves to its `src`). Keep them built
+(`pnpm build`) so the LSP doesn't report false-positive unresolved imports.
+
 ### See Also
 - [platform-architecture.md](./platform-architecture.md) — architecture decision log + ADR index
 - [docs/erd.md](./docs/erd.md) — entity-relationship diagram of the database schema
