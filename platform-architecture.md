@@ -22,6 +22,12 @@
 - packages/auth
 - packages/core
 
+## Data model
+
+The PostgreSQL schema and its relationships (hard FKs, soft references,
+deferrable FKs, and the polymorphic revision log) are diagrammed in
+[`docs/erd.md`](./docs/erd.md).
+
 ## Secure Development Processes
 - TODO: Define security practices, secret management, dependency scanning, and code review requirements
 
