@@ -126,6 +126,13 @@ Non-feature maintenance and tooling tasks, tracked here until scheduled.
 - **Repair process before destructive local reset** (see ADR 0008 / the
   `TODO(repair)` in `SyncHealthBanner.tsx`): recover unsynced local writes before
   "Reset local data" wipes the RxDB replica.
+- **Sync-status indicator on the type-A pages.** The notes page shows a
+  `SyncIndicator` ("● Synced"), but the contacts and categories pages give no
+  signal that local writes have flushed to the server — a user can't tell pending
+  from synced. Add a synced/pending indicator to those pages (reuse
+  `SyncIndicator`), driven by the replication `active$` state and/or the
+  `BatchCoordinator`'s in-flight buffer (pending while rows are buffered/un-acked,
+  synced once the batch commits).
 
 ## Notes
 - Two separate frontend applications sharing a single backend
