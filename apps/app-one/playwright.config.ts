@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests',
+  // Migrate + seed the deterministic baseline once before the suite (ADR 0011).
+  globalSetup: './tests/global-setup.ts',
   fullyParallel: false, // conflict tests share state via DB; keep serial
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
