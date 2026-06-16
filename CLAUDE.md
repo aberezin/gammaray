@@ -154,6 +154,20 @@ Frontend is pre-configured to reach the API at `http://localhost:3001`. Full int
 - **Major version upgrades** (framework, runtime, major dependency): create a feature branch (e.g. `chore/next-upgrade-16`), commit there, then ask for review before merging. This gives a checkpoint to assess risk.
 - **Other changes**: commit directly to main per the workflow ("commit after each major change; PRs only when asked").
 
+### Testing
+
+**All new features and bug fixes must be tested before committing.** Testing can be:
+
+- **Automated (preferred):** Write a Playwright e2e test in `apps/app-one/tests/` that exercises the feature deterministically. Run with `pnpm --filter @gammaray/app-one test:e2e`
+- **Manual (acceptable for simple UI features):** Start the dev stack (`docker compose up -d && pnpm --filter @gammaray/app-one dev`), manually test in Chrome, document test steps in the commit message or PR
+
+**Examples:**
+- **Sync indicator:** Test by toggling offline mode and verifying the indicator updates
+- **Form validation:** Test by entering invalid data and checking error states
+- **API endpoint:** Test with Playwright or curl to verify response codes and data shape
+
+If automated testing is expensive or requires infrastructure setup, discuss with the team first — manual tests are acceptable if well-documented.
+
 ### Working with executable scripts
 
 The Edit tool loses file permissions (executable bit) when modifying files. When editing shell scripts (`.sh`) or other executables:
