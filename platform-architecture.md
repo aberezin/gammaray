@@ -85,10 +85,14 @@ hold the detailed argument for individual decisions.
   history/merge/conflict into the generic applier; `resolveRowConflict` +
   `rowRevisions`. No bespoke server code remains (Phase 2).
 - [ADR 0011 — Database seeding (engine-driven, decoupled from migrations)](./docs/adr/0011-database-seeding.md):
-  *Proposed.* `db:seed` writes through the engine/descriptors (auto-correct per
-  revision), idempotent with `--reset`, core + optional demo layers; seeds out of
-  migrations into the seed; auto-runs on empty DB at container boot + Playwright
-  `globalSetup`. Core e2e fixture kept identical to confine risk.
+  `db:seed` writes through the engine/descriptors (auto-correct per revision),
+  idempotent with `--reset`; seeds out of migrations into the seed; auto-runs at
+  container boot + Playwright `globalSetup`. Core e2e fixture kept identical.
+- [ADR 0012 — Data epoch + client reslate for server-reset divergence](./docs/adr/0012-data-epoch-reslate.md):
+  *Proposed.* A server data-epoch (bumped by out-of-app changes — migrate/seed/
+  manual) lets clients detect an SDLC reset and cleanly reslate (discard + re-pull)
+  instead of mis-merging; no speculative parent re-push. Extends the schema-wipe
+  philosophy to data. Manual *Reset local data* button is the escape hatch.
 
 ## Performance & Capacity (load testing)
 
