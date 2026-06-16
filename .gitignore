@@ -31,6 +31,7 @@ packages/*/src/**/*.d.ts.map
 *.log
 .idea/
 test-results/
+playwright-report/
 
 # Machine-specific environment notes (template is LOCAL.example.md)
 /LOCAL.md

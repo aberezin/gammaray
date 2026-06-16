@@ -1,7 +1,16 @@
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+// Server-side base URL for the API. This module is the NextAuth config and runs
+// only on the server (in the Next.js process), so it must reach the API the way
+// the *server* sees it. Inside Docker that is the compose service name
+// (http://api:3001) — `localhost` in the frontend container is the frontend
+// itself, not the API. Browser-side code (graphql-client, login page) uses
+// NEXT_PUBLIC_API_URL instead, which is localhost:3001 from the host's view.
+// Local dev (frontend on the host) leaves API_INTERNAL_URL unset and falls back
+// to localhost, which is correct there.
+const API_URL =
+  process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
 // Decode a JWT's `exp` (seconds) into epoch millis; 0 if unreadable.
 function expiryMs(token: string): number {

@@ -118,34 +118,25 @@ Auth is fully stateless JWT. No server-side session storage.
 
 ## Containerization
 
-All services (PostgreSQL, API, frontend) are containerized with `docker compose`. The setup uses **Colima** as the container runtime on macOS (not Docker Desktop).
+All three services (PostgreSQL, API, frontend) are containerized with `docker compose`. The runtime on macOS is **Colima** (not Docker Desktop). See `DEV_SETUP.md` for the full guide.
 
-**Recommended dev setup (verified working):**
-
-Run backend in containers, frontend locally:
+**Recommended: full stack in Docker** (verified — auth + e2e suite pass against it):
 ```bash
-# Terminal 1: Backend services
-docker compose up -d              # API on :3001, Postgres on :5432
-
-# Terminal 2: Frontend for Chrome testing
-pnpm --filter @gammaray/app-one dev  # Frontend on :3000
+docker compose up -d   # frontend :3000, API :3001, Postgres :5432
 ```
+Open http://localhost:3000 in Chrome. Colima forwards both published ports to the host; there is **no** port-forwarding limitation.
 
-Frontend is pre-configured to reach the API at `http://localhost:3001`. Full integration works end-to-end.
+**Browser-side vs server-side API URL (the key gotcha):** the frontend reaches the API from two places that need different URLs when containerized:
+- **Browser-side** (RxDB sync, GraphQL, register form) → `NEXT_PUBLIC_API_URL=http://localhost:3001` (the host's published port).
+- **Server-side** (NextAuth `authorize`/refresh in `apps/app-one/src/auth.ts`) → `API_INTERNAL_URL=http://api:3001` (the compose service name). Inside the frontend container `localhost:3001` is the frontend itself, not the API. Both are set in `docker-compose.yml`. Getting the server-side one wrong looks like "Invalid email or password" on every login.
 
-**Why this works:**
-- API port 3001 is accessible from host via Colima port forwarding ✓
-- Frontend port 3000 has forwarding issues (Colima limitation) but runs locally fine ✓
-- Frontend config has `NEXT_PUBLIC_API_URL=http://localhost:3001` ✓
+**Alternative: frontend on the host** (fast Fast-Refresh iteration) — run `docker compose up -d postgres api` then `pnpm --filter @gammaray/app-one dev`. On the host, `localhost:3001` works for both call sites, so `API_INTERNAL_URL` is not needed.
 
-**Colima specifics (see LOCAL.md):**
-- Runtime: Colima (not Docker Desktop)
-- Port forwarding: IPv6 ports work (3001), IPv4 ports hang (3000) — likely VM networking layer
-- Attempted fixes: `address: true`, `mode: bridged` — neither resolved the 3000 forwarding issue
+**If `localhost:3000` hangs:** it's a stale host process on the port, not Colima — `lsof -nP -i :3000` and kill any `node`/`next-server` (Colima's own forwarder shows up as `ssh`).
 
 **Dockerfiles:**
 - `apps/api/Dockerfile` — NestJS on :3001, runs migrations on startup
-- `apps/app-one/Dockerfile` — Next.js on :3000, binds to 0.0.0.0 for external access
+- `apps/app-one/Dockerfile` — Next.js on :3000 (binds `0.0.0.0` so the container is reachable)
 
 ## SDLC
 

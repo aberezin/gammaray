@@ -46,6 +46,13 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
+      # Browser-side calls (RxDB sync, GraphQL, register) run in the user's
+      # browser on the host, so they reach the API via the published host port.
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      # Server-side calls (NextAuth authorize/refresh in the Next process) run
+      # inside this container, where the API is the `api` compose service — NOT
+      # localhost. See apps/app-one/src/auth.ts.
+      API_INTERNAL_URL: http://api:3001
     depends_on:
       api:
         condition: service_started
