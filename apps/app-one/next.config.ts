@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next'
+import path from 'path'
 
 const config: NextConfig = {
   transpilePackages: ['@gammaray/core', '@gammaray/auth', '@gammaray/ui'],
@@ -7,7 +8,8 @@ const config: NextConfig = {
     incomingRequests: false,
   },
   turbopack: {
-    root: '../../',
+    // Absolute path to the monorepo root; Turbopack warns on a relative root.
+    root: path.resolve(__dirname, '../../'),
   },
 }
 
