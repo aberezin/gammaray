@@ -13,7 +13,7 @@ export function ResetLocalButton() {
   async function handleReset() {
     if (busy) return
     const ok = window.confirm(
-      'Reset local data?\n\n' +
+      'Reset local copy?\n\n' +
         "This discards this device's local copy and re-downloads everything from " +
         'the server. Any unsynced offline changes will be lost.',
     )
@@ -43,7 +43,7 @@ export function ResetLocalButton() {
         cursor: busy ? 'default' : 'pointer',
       }}
     >
-      {busy ? 'Resetting…' : 'Reset local data'}
+      {busy ? 'Resetting…' : 'Reset local copy'}
     </button>
   )
 }

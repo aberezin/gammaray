@@ -18,6 +18,7 @@ dotenv.config({ path: resolve(__dirname, '../../../../.env') })
 
 import { NestFactory } from '@nestjs/core'
 import { DataSource } from 'typeorm'
+import { bumpDataEpoch } from '@gammaray/database'
 import { AppModule } from '../app.module'
 import { RowRegistry } from '../engine/row-registry'
 import { coreSeed, type SeedRow } from './seed-data'
@@ -69,6 +70,14 @@ async function main() {
     })
 
     console.log(`Seed complete: ${created} created, ${skipped} already present${reset ? ' (after --reset)' : ''}.`)
+
+    // Data changed out-of-app → bump the epoch so clients reslate (ADR 0012).
+    // A no-op seed (nothing created, no reset) leaves the epoch alone, so a plain
+    // container restart doesn't force every client to refresh.
+    if (created > 0 || reset) {
+      const epoch = await bumpDataEpoch(dataSource)
+      console.log(`Data epoch bumped to ${epoch}.`)
+    }
   } finally {
     await app.close()
   }

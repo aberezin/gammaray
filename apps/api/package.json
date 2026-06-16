@@ -8,7 +8,8 @@
     "lint": "tsc --noEmit",
     "test": "jest",
     "db:migrate": "pnpm --filter @gammaray/database db:migrate",
-    "db:seed": "ts-node -r tsconfig-paths/register src/seed/seed.ts"
+    "db:seed": "ts-node -r tsconfig-paths/register src/seed/seed.ts",
+    "db:epoch:bump": "ts-node -r tsconfig-paths/register src/meta/epoch-bump.ts"
   },
   "dependencies": {
     "@apollo/server": "^4.11.0",

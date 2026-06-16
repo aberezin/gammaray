@@ -10,6 +10,7 @@ import {
   TagEntity,
   ContactTagEntity,
   RowRevisionEntity,
+  AppMetaEntity,
 } from '@gammaray/database'
 
 @Global()
@@ -33,6 +34,7 @@ import {
           TagEntity,
           ContactTagEntity,
           RowRevisionEntity,
+          AppMetaEntity,
         ],
         migrations: [],
         synchronize: false,

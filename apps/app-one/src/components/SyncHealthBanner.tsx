@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { signOut } from 'next-auth/react'
 import { useSyncHealth } from '@/store/sync-health.store'
+import { clearLocalDatabase } from '@/lib/rxdb'
 
 // A prominent, app-wide banner shown whenever sync health is "suspect". Once
 // suspect, the local UI state and the local RxDB replica are NOT trusted — the
@@ -24,9 +25,7 @@ export function SyncHealthBanner() {
     // locally or are ahead of the server into a recovery bundle, and offer to
     // re-apply them after the rebuild. Today Reset is destructive: any
     // local-only write that never synced is lost. See docs/adr/0008.
-    const { removeRxDatabase } = await import('rxdb')
-    const { getRxStorageDexie } = await import('rxdb/plugins/storage-dexie')
-    await removeRxDatabase('notesync', getRxStorageDexie())
+    await clearLocalDatabase()
     window.location.reload()
   }
 
