@@ -84,6 +84,11 @@ hold the detailed argument for individual decisions.
   a single `row_revisions` table + a `revisioned` descriptor flag fold contacts'
   history/merge/conflict into the generic applier; `resolveRowConflict` +
   `rowRevisions`. No bespoke server code remains (Phase 2).
+- [ADR 0011 — Database seeding (engine-driven, decoupled from migrations)](./docs/adr/0011-database-seeding.md):
+  *Proposed.* `db:seed` writes through the engine/descriptors (auto-correct per
+  revision), idempotent with `--reset`, core + optional demo layers; seeds out of
+  migrations into the seed; auto-runs on empty DB at container boot + Playwright
+  `globalSetup`. Core e2e fixture kept identical to confine risk.
 
 ## Performance & Capacity (load testing)
 
