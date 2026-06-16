@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { RecordList, RecordForm, OfflineToggle, SyncIndicator } from '@gammaray/ui'
 import { categoryDescriptor, SyncStatus, type RowRecord } from '@gammaray/core'
 import { getDatabase } from '@/lib/rxdb'
+import { ResetLocalButton } from '@/components/ResetLocalButton'
 import { startRowReplication, BatchCoordinator } from '@/lib/batch-sync'
 import { makeGqlClient } from '@/lib/graphql-client'
 import { getAccessToken, primeToken } from '@/lib/token'
@@ -108,6 +109,7 @@ export function CategoriesPageClient({ accessToken }: Props) {
           </button>
           <OfflineToggle offline={offline} onToggle={setOffline} />
           <SyncIndicator status={syncStatus} />
+          <ResetLocalButton />
           <Link href="/contacts" style={{ fontSize: 13, color: '#3b82f6' }}>Contacts →</Link>
         </div>
       </header>

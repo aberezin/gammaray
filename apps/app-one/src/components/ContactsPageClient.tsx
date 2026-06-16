@@ -13,6 +13,7 @@ import {
   type ContactRevisionDto,
 } from '@gammaray/core'
 import { getDatabase } from '@/lib/rxdb'
+import { ResetLocalButton } from '@/components/ResetLocalButton'
 import { startRowReplication, BatchCoordinator } from '@/lib/batch-sync'
 import { makeGqlClient } from '@/lib/graphql-client'
 import { getAccessToken, primeToken } from '@/lib/token'
@@ -409,6 +410,7 @@ export function ContactsPageClient({ accessToken }: Props) {
           </button>
           <OfflineToggle offline={offline} onToggle={setOffline} />
           <SyncIndicator status={syncStatus} />
+          <ResetLocalButton />
           <Link href="/categories" style={{ fontSize: 13, color: '#3b82f6' }}>Categories →</Link>
           <Link href="/" style={{ fontSize: 13, color: '#3b82f6' }}>← Notes</Link>
         </div>

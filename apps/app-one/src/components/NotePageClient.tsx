@@ -11,6 +11,7 @@ import { getAccessToken, primeToken } from '@/lib/token'
 import { useSyncHealth } from '@/store/sync-health.store'
 import { startReplication, resolveConflict } from '@/lib/sync'
 import { getDatabase } from '@/lib/rxdb'
+import { ResetLocalButton } from '@/components/ResetLocalButton'
 import type { RevisionDto } from '@gammaray/core'
 
 interface Props {
@@ -253,6 +254,7 @@ export function NotePageClient({ accessToken }: Props) {
           <Link href="/contacts" style={{ fontSize: 13, color: '#3b82f6' }}>Contacts →</Link>
           <OfflineToggle offline={offline} onToggle={handleToggleOffline} />
           <SyncIndicator status={syncStatus} />
+          <ResetLocalButton />
           <button
             onClick={() => signOut()}
             style={{ fontSize: 12, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}

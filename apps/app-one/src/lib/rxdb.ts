@@ -76,6 +76,22 @@ export async function getDatabase(): Promise<AppDatabase> {
   return dbPromise
 }
 
+// Throw away the local replica (IndexedDB/Dexie) on purpose. The local store is
+// a disposable copy — the server is authoritative — so after this the caller
+// should reload the page; replication then rebuilds the store and re-pulls
+// everything from the server. Powers the "Reset local data" control: handy when
+// the local copy has diverged (e.g. an orphaned row that can't sync) or you just
+// want a clean re-download. Discards any UNSYNCED local writes — callers warn.
+export async function clearLocalDatabase(): Promise<void> {
+  try {
+    const db = dbPromise ? await dbPromise.catch(() => null) : null
+    if (db) await db.remove()
+    else await removeRxDatabase(DB_NAME, getRxStorageDexie())
+  } finally {
+    dbPromise = null
+  }
+}
+
 function isSchemaMismatch(err: unknown): boolean {
   const code = (err as { code?: string })?.code
   const message = (err as { message?: string })?.message ?? ''
