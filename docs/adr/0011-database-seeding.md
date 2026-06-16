@@ -1,6 +1,6 @@
 # ADR 0011 — Database seeding (engine-driven, decoupled from migrations)
 
-- **Status:** Proposed (2026-06-16)
+- **Status:** Accepted (2026-06-16)
 - **Context area:** Dev/test data — reproducible baseline across revisions and parallel instances
 
 ## Context
@@ -41,8 +41,11 @@ Postgres volume.
   from the schema because it goes through the same writer the client uses. (We
   reject version-pinned seed files: they add bookkeeping this gets for free. We
   reject keeping seed-as-migration: it has all five problems above.)
-- **`pnpm --filter @gammaray/database db:seed`**, idempotent (upsert by stable
-  IDs), with `--reset` to truncate the type-A tables first for a clean baseline.
+- **`pnpm --filter @gammaray/api db:seed`**, idempotent (create-if-absent by
+  stable id), with `--reset` to truncate the type-A tables first for a clean
+  baseline. (The command lives in `@gammaray/api`, not `@gammaray/database`, as
+  first sketched: it bootstraps a Nest application context to reach the engine /
+  `RowRegistry`. The seed *data* is a plain fixture in `apps/api/src/seed/`.)
 - **Two layers.** A small **core fixture** (the deterministic rows e2e asserts
   on) and an optional **dev/demo** layer (more rows + relationships) behind a
   flag/env. e2e seeds core only; dev seeds core + demo.

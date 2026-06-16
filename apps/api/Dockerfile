@@ -19,5 +19,5 @@ EXPOSE 3001
 # Set environment
 ENV NODE_ENV=development
 
-# Run migrations and start the app
-CMD ["sh", "-c", "pnpm --filter @gammaray/database db:migrate && pnpm --filter @gammaray/api dev"]
+# Migrate, seed the baseline (idempotent), then start the app
+CMD ["sh", "-c", "pnpm --filter @gammaray/database db:migrate && pnpm --filter @gammaray/api db:seed && pnpm --filter @gammaray/api dev"]
