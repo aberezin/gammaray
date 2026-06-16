@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: gammaray
       POSTGRES_DB: gammaray
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -29,7 +29,10 @@ services:
       DATABASE_USER: gammaray
       DATABASE_PASSWORD: gammaray
       DATABASE_NAME: gammaray
-      NEXTAUTH_URL: http://localhost:3000
+      # CORS allowed origin = the frontend's published host URL. Keys off the
+      # same PORT var the frontend publishes on, so each parallel instance
+      # allows its own browser origin (see apps/api/src/main.ts).
+      NEXTAUTH_URL: http://localhost:${PORT:-3000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,12 +50,17 @@ services:
       NODE_ENV: development
       PORT: 3000
       # Browser-side calls (RxDB sync, GraphQL, register) run in the user's
-      # browser on the host, so they reach the API via the published host port.
-      NEXT_PUBLIC_API_URL: http://localhost:3001
+      # browser on the host, so they reach the API via its *published host* port.
+      # Keys off API_PORT so each parallel instance targets its own API, not
+      # another instance's.
+      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-3001}
       # Server-side calls (NextAuth authorize/refresh in the Next process) run
-      # inside this container, where the API is the `api` compose service — NOT
-      # localhost. See apps/app-one/src/auth.ts.
+      # inside this container, where the API is the `api` compose service on its
+      # fixed internal port — NOT localhost. See apps/app-one/src/auth.ts.
       API_INTERNAL_URL: http://api:3001
+      # Let NextAuth trust the incoming host/port (instances run on different
+      # host ports); avoids hard-coding a single callback URL.
+      AUTH_TRUST_HOST: "true"
     depends_on:
       api:
         condition: service_started

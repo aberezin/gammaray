@@ -42,6 +42,38 @@ Here the frontend runs on the host, so both its browser-side and server-side
 calls reach the API at `localhost:3001` (the published API port). You do **not**
 set `API_INTERNAL_URL` in this mode.
 
+## Parallel instances (isolated stacks for concurrent work/testing)
+
+You can run several complete stacks side by side, each with its own containers,
+its own Postgres volume (so they never share data), and a non-conflicting set of
+host ports. Use the helper:
+
+```bash
+scripts/instance.sh 1 up -d     # frontend :3000  api :3001  postgres :5432
+scripts/instance.sh 2 up -d     # frontend :3010  api :3011  postgres :5442
+scripts/instance.sh 3 up -d     # frontend :3020  api :3021  postgres :5452
+
+open http://localhost:3000      # instance 1 in Chrome
+open http://localhost:3010      # instance 2 in Chrome
+
+scripts/instance.sh 2 down -v   # stop instance 2 and drop its DB volume
+```
+
+Ports for instance N are `base + (N-1)*10` (frontend 3000, api 3001, db 5432).
+Each instance is a separate compose project (`gammaray-N`), so containers,
+networks, and volumes are isolated — verified: a user registered against
+instance 1's API does not exist in instance 2.
+
+Under the hood the helper just sets `PORT` / `API_PORT` / `DB_PORT` and a `-p`
+project name, so the equivalent raw command is:
+
+```bash
+PORT=3010 API_PORT=3011 DB_PORT=5442 docker compose -p gammaray-2 up -d
+```
+
+The frontend's browser-side `NEXT_PUBLIC_API_URL` and the API's CORS origin are
+derived from these ports, so each instance's browser talks to **its own** API.
+
 ## How the frontend reaches the API (important)
 
 The frontend talks to the API from **two different places**, and they need
