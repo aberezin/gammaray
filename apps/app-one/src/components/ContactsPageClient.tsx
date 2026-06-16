@@ -2,7 +2,8 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle } from '@gammaray/ui'
+import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle, SyncIndicator } from '@gammaray/ui'
+import type { SyncStatus } from '@gammaray/core'
 import {
   contactDescriptor,
   companyDescriptor,
@@ -54,6 +55,7 @@ export function ContactsPageClient({ accessToken }: Props) {
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({})
   const [conflict, setConflict] = useState<ContactConflict | null>(null)
   const [offline, setOffline] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
   const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([])
   const [newCompany, setNewCompany] = useState('')
   const [tags, setTags] = useState<Array<{ id: string; name: string }>>([])
@@ -93,6 +95,11 @@ export function ContactsPageClient({ accessToken }: Props) {
       subs.forEach((s) => s.unsubscribe())
     }
   }, [])
+
+  // Update sync status based on offline state
+  useEffect(() => {
+    setSyncStatus(offline ? 'offline' : 'idle')
+  }, [offline])
 
   // Replication — contact + company share one BatchCoordinator so their pushes
   // ride a single atomic pushBatch (offline parent+child sync together). Runs
@@ -401,6 +408,7 @@ export function ContactsPageClient({ accessToken }: Props) {
             New contact
           </button>
           <OfflineToggle offline={offline} onToggle={setOffline} />
+          <SyncIndicator status={syncStatus} />
           <Link href="/categories" style={{ fontSize: 13, color: '#3b82f6' }}>Categories →</Link>
           <Link href="/" style={{ fontSize: 13, color: '#3b82f6' }}>← Notes</Link>
         </div>
