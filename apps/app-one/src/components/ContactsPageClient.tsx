@@ -3,8 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle, SyncIndicator } from '@gammaray/ui'
-import type { SyncStatus } from '@gammaray/core'
 import {
+  SyncStatus,
   contactDescriptor,
   companyDescriptor,
   tagDescriptor,
@@ -55,7 +55,7 @@ export function ContactsPageClient({ accessToken }: Props) {
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({})
   const [conflict, setConflict] = useState<ContactConflict | null>(null)
   const [offline, setOffline] = useState(false)
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncStatus.Synced)
   const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([])
   const [newCompany, setNewCompany] = useState('')
   const [tags, setTags] = useState<Array<{ id: string; name: string }>>([])
@@ -98,7 +98,7 @@ export function ContactsPageClient({ accessToken }: Props) {
 
   // Update sync status based on offline state
   useEffect(() => {
-    setSyncStatus(offline ? 'offline' : 'idle')
+    setSyncStatus(offline ? SyncStatus.Offline : SyncStatus.Synced)
   }, [offline])
 
   // Replication — contact + company share one BatchCoordinator so their pushes

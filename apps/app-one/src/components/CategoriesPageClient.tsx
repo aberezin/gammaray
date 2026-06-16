@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { RecordList, RecordForm, OfflineToggle, SyncIndicator } from '@gammaray/ui'
-import { categoryDescriptor, type RowRecord, type SyncStatus } from '@gammaray/core'
+import { categoryDescriptor, SyncStatus, type RowRecord } from '@gammaray/core'
 import { getDatabase } from '@/lib/rxdb'
 import { startRowReplication, BatchCoordinator } from '@/lib/batch-sync'
 import { makeGqlClient } from '@/lib/graphql-client'
@@ -24,7 +24,7 @@ export function CategoriesPageClient({ accessToken }: Props) {
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<Record<string, unknown>>({})
   const [offline, setOffline] = useState(false)
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncStatus.Synced)
   const gqlClient = useRef(makeGqlClient())
   const clientId = useRef<string>(crypto.randomUUID())
 
@@ -46,7 +46,7 @@ export function CategoriesPageClient({ accessToken }: Props) {
 
   // Update sync status based on offline state
   useEffect(() => {
-    setSyncStatus(offline ? 'offline' : 'idle')
+    setSyncStatus(offline ? SyncStatus.Offline : SyncStatus.Synced)
   }, [offline])
 
   // Replication via the batch coordinator (only while online; restart on reconnect).
