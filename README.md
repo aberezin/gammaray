@@ -78,6 +78,16 @@ built (`core`/`database`/`auth` resolve via their emitted `.d.ts`, with
 `declarationMap` jumping to source; `ui` resolves to its `src`). Keep them built
 (`pnpm build`) so the LSP doesn't report false-positive unresolved imports.
 
+### Git LFS — not used
+
+This repo does **not** use Git LFS (no `.gitattributes` filters, nothing tracked).
+If `git push` fails on `info/lfs/locks/verify` (a machine-level git-lfs install
+intercepting the push), disable the optional lock check for your clone:
+
+```bash
+git config lfs.https://github.com/aberezin/gammaray.git/info/lfs.locksverify false
+```
+
 ### See Also
 - [platform-architecture.md](./platform-architecture.md) — architecture decision log + ADR index
 - [docs/erd.md](./docs/erd.md) — entity-relationship diagram of the database schema

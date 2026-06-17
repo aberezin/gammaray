@@ -168,6 +168,16 @@ The Edit tool loses file permissions (executable bit) when modifying files. When
 
 This ensures clones of the repo will have executable scripts. Examples: `scripts/dev-with-ports.sh`, `scripts/find-free-port.sh`.
 
+### Git LFS — not used
+
+This repo does **not** use Git LFS (no `.gitattributes` filters, nothing tracked). If a `git push` ever fails on `info/lfs/locks/verify` (a machine-level git-lfs install intercepting the push), disable the optional lock check for this clone:
+
+```bash
+git config lfs.https://github.com/aberezin/gammaray.git/info/lfs.locksverify false
+```
+
+(Per-clone `.git/config`, not committed — re-run after a fresh clone if needed.)
+
 ## Notes
 
 - Two frontend applications (`apps/app-one`, `apps/app-two` placeholder) share one backend and must communicate only through it.
