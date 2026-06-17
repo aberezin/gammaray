@@ -38,8 +38,9 @@
     "excludedCommands": ["docker *", "colima *"],
     "network": {
       "allowLocalBinding": true,
-      "allowedDomains": ["localhost"],
-      "allowAllUnixSockets": true
+      "allowedDomains": ["localhost", "github.com", "api.github.com"],
+      "allowAllUnixSockets": true,
+      "enableWeakerNetworkIsolation": true
     }
   },
   "hooks": {
