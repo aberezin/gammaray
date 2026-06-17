@@ -1,6 +1,8 @@
 # ADR 0005 — Soft (un-enforced) foreign-key references
 
-- **Status:** Accepted (2026-06-15)
+- **Status:** Accepted (2026-06-15); **amended 2026-06-17** — the "later hardening
+  increment" this ADR deferred was delivered: type-A references are now enforced
+  by **DEFERRABLE** FK constraints, not left un-enforced. See the Update below.
 - **Context area:** Type-A relations — many-to-one references
 
 ## Context
@@ -38,3 +40,29 @@ are read-only seeded lookup data for now).
   delete semantics across the edge (cascade / block / null-out, plus the
   delete-vs-reference conflict) are a later hardening increment. In-app company
   CRUD (create/edit/delete of the referenced table) is also deferred.
+
+## Update (2026-06-17) — references are now enforced by DEFERRABLE FKs
+
+The "enforced referential integrity / atomic cross-collection sync" deferred
+above was delivered once **server-side batch sync (ADR 0006)** made each push a
+single transaction. With parent and child applied in the same transaction, a
+**`DEFERRABLE INITIALLY DEFERRED`** FK works cleanly: the constraint is checked at
+`COMMIT` (the batch endpoint runs `SET CONSTRAINTS ALL DEFERRED`), so the order in
+which independent collections push within the batch no longer matters — exactly
+the conflict this ADR raised, now resolved without per-statement enforcement.
+
+So the type-A references are **not un-enforced** anymore — they carry real FK
+constraints, just deferred to transaction boundary:
+
+- `contacts.company_id → companies.id` — migration `1000000000004-DeferrableCompanyFk`
+- `categories.parent_id → categories.id` (self-referential tree) — migration `…005-AddCategories`
+- `contact_tags.{contact_id,tag_id} → {contacts,tags}.id` (join table) — migration `…006-AddTags`
+
+The reference field still rides the descriptor/merge machinery as before; the
+only change is the DB now guarantees integrity at commit. The app-level
+`BatchService.validateReferences` (checks against DB ∪ the in-flight batch)
+remains the *friendlier first* layer that returns a `REJECTED` with a clear
+reason; the deferrable FK is the backstop.
+
+Genuinely still soft (no FK): the cross-table **`row_revisions`** log, keyed by
+`(table_name, row_id)` — it spans every table so it can't target one (ADR 0010).
