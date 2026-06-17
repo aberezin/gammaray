@@ -6,6 +6,7 @@ import { resolve } from 'path'
 dotenv.config({ path: resolve(__dirname, '../../../.env') })
 
 import { AppDataSource } from './data-source'
+import { bumpDataEpoch } from './data-epoch'
 
 async function main() {
   await AppDataSource.initialize()
@@ -16,7 +17,9 @@ async function main() {
     return
   }
   await AppDataSource.runMigrations()
-  console.log('Migrations complete.')
+  // Schema/data changed out-of-app → bump the epoch so clients reslate (ADR 0012).
+  const epoch = await bumpDataEpoch(AppDataSource)
+  console.log(`Migrations complete. Data epoch bumped to ${epoch}.`)
   await AppDataSource.destroy()
 }
 

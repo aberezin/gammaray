@@ -9,6 +9,7 @@ import { CompanyEntity } from './entities/company.entity'
 import { CategoryEntity } from './entities/category.entity'
 import { TagEntity } from './entities/tag.entity'
 import { ContactTagEntity } from './entities/contact-tag.entity'
+import { AppMetaEntity } from './entities/app-meta.entity'
 
 export function createDataSource(overrides: Partial<DataSourceOptions> = {}): DataSource {
   return new DataSource({
@@ -28,6 +29,7 @@ export function createDataSource(overrides: Partial<DataSourceOptions> = {}): Da
       TagEntity,
       ContactTagEntity,
       RowRevisionEntity,
+      AppMetaEntity,
     ],
     migrations: [__dirname + '/migrations/*.{ts,js}'],
     // Never enable synchronize — use migrations only

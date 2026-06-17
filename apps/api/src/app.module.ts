@@ -8,6 +8,7 @@ import { NotesModule } from './notes/notes.module'
 import { EngineModule } from './engine/engine.module'
 import { BatchModule } from './batch/batch.module'
 import { SyncModule } from './sync/sync.module'
+import { MetaModule } from './meta/meta.module'
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { SyncModule } from './sync/sync.module'
     EngineModule,
     BatchModule,
     SyncModule,
+    MetaModule,
   ],
 })
 export class AppModule {}

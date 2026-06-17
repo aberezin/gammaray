@@ -13,7 +13,7 @@ test.describe('Reset local data', () => {
     await page.goto('/contacts')
     await expect(page.getByText('Lovelace')).toBeVisible({ timeout: 10_000 })
 
-    await page.getByRole('button', { name: 'Reset local data' }).click()
+    await page.getByRole('button', { name: 'Reset local copy' }).click()
 
     // The page reloads, RxDB rebuilds empty, and replication re-pulls the
     // seeded baseline from the server.
