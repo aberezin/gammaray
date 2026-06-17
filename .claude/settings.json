@@ -35,7 +35,12 @@
     "autoAllowBashIfSandboxed": true,
     "failIfUnavailable": false,
     "allowUnsandboxedCommands": true,
-    "excludedCommands": ["docker *", "colima *"]
+    "excludedCommands": ["docker *", "colima *"],
+    "network": {
+      "allowLocalBinding": true,
+      "allowedDomains": ["localhost"],
+      "allowAllUnixSockets": true
+    }
   },
   "hooks": {
     "PreToolUse": [
