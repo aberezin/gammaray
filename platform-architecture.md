@@ -65,8 +65,10 @@ hold the detailed argument for individual decisions.
 - [ADR 0004 — Merge strategy as per-table policy](./docs/adr/0004-merge-strategy-as-table-policy.md):
   WholeRow default, DisjointFields auto-merge opt-in; mechanism vs. policy.
 - [ADR 0005 — Soft (un-enforced) foreign-key references](./docs/adr/0005-soft-foreign-key-references.md):
-  many-to-one as a nullable reference field, no DB FK constraint; the FK rides
-  field sync/merge. Enforced integrity + cross-collection ordering deferred.
+  many-to-one as a nullable reference field that rides field sync/merge.
+  **Amended:** initially un-enforced, now backed by **DEFERRABLE** FK constraints
+  (checked at COMMIT) once the single-transaction batch sync (ADR 0006) made
+  cross-collection push order irrelevant. Only `row_revisions` stays FK-free.
 - [ADR 0006 — Server-side transactional batch sync](./docs/adr/0006-server-side-batch-sync.md):
   one `pushBatch` transaction with deferrable FKs + FK-graph topo ordering;
   applied-set atomic, conflicts/rejects isolated. Self-reference / cycle handling
@@ -89,10 +91,10 @@ hold the detailed argument for individual decisions.
   idempotent with `--reset`; seeds out of migrations into the seed; auto-runs at
   container boot + Playwright `globalSetup`. Core e2e fixture kept identical.
 - [ADR 0012 — Data epoch + client reslate for server-reset divergence](./docs/adr/0012-data-epoch-reslate.md):
-  *Proposed.* A server data-epoch (bumped by out-of-app changes — migrate/seed/
-  manual) lets clients detect an SDLC reset and cleanly reslate (discard + re-pull)
-  instead of mis-merging; no speculative parent re-push. Extends the schema-wipe
-  philosophy to data. Manual *Reset local data* button is the escape hatch.
+  A server data-epoch (bumped by out-of-app changes — migrate/seed/manual) lets
+  clients detect an SDLC reset and cleanly reslate (discard + re-pull) instead of
+  mis-merging; no speculative parent re-push. Extends the schema-wipe philosophy
+  to data. Manual *Reset local copy* button is the escape hatch. (Merged, PR #20.)
 
 ## Performance & Capacity (load testing)
 
