@@ -14,6 +14,16 @@
 #    dangerous verb behind a safe one (each segment's leader is checked).
 #  - wrappers (timeout/time/nice/nohup/stdbuf/env) and runners (xargs) are
 #    unwrapped to their inner verb; sudo is never safe.
+#
+# TODO (if naive parsing causes too many false-negative prompts): replace the
+# sed-based operator splitting below with a real shell AST — parse via `shfmt`
+# and walk it with `jq` to extract every sub-command (incl. inside $(…), <(…),
+# subshells, and if/for/while/case bodies), KEEPING this file's contextual
+# segment_safe() policy (localhost-only curl, no-force-push git, docker
+# sub-command allowlist, etc.). That's the robust-parsing front-end from
+# oryband/claude-code-auto-approve grafted onto our guardrails — avoids running
+# third-party code at the permission boundary and keeps the nuanced rules that
+# prefix-based permissions.allow can't express. See [[reference-permission-hook]].
 set -euo pipefail
 
 input="$(cat)"
