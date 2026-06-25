@@ -56,7 +56,7 @@ docker compose up -d
 k6 run load-tests/k6/single-socket.js    # baseline; see load-tests/README.md
 ```
 
-Build order matters: `packages/core` → `packages/database` → `apps/api`. The `packages/ui` has no separate build step — Next.js transpiles it directly.
+Build order matters: `packages/core` → `packages/notesync-schema` → `packages/database` → `apps/api`. (`@gammaray/core` is the framework — the descriptor *system* + generic merge/sync logic; `@gammaray/notesync-schema` holds the example app's concrete `TableDescriptor`s built on it.) The `packages/ui` has no separate build step — Next.js transpiles it directly.
 
 ## Architecture
 
@@ -65,7 +65,8 @@ Build order matters: `packages/core` → `packages/database` → `apps/api`. The
 ```
 apps/api          NestJS backend — GraphQL + REST auth endpoints
 apps/app-one      Next.js 15 frontend (App Router)
-packages/core     Shared TypeScript DTOs and enums (NoteDto, ConflictResultDto, SyncStatus, ConflictStatus)
+packages/core     Framework: the descriptor system (FieldKind, TableDescriptor, MergeStrategyKind), shared DTOs/enums (SyncStatus, ConflictStatus), generic merge + dependency-order logic
+packages/notesync-schema  The NoteSync example app's data model: the concrete TableDescriptors (contact, company, category, tag) built on @gammaray/core. Swap this to drive a different app.
 packages/auth     JwtPayload interface shared between api and app-one
 packages/database TypeORM entities, migrations, and data source config
 packages/ui       Shared React components (NoteEditor, RevisionList, ConflictBanner, OfflineToggle, SyncIndicator)

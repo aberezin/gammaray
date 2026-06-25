@@ -1,9 +1,7 @@
+// Framework only — the descriptor system + generic sync/merge logic. The example
+// app's concrete TableDescriptors live in @gammaray/notesync-schema.
 export * from './types'
 export * from './enums'
 export * from './descriptors'
-export * from './descriptors.contact'
-export * from './descriptors.company'
-export * from './descriptors.category'
-export * from './descriptors.tag'
 export * from './merge'
 export * from './dependency-order'

@@ -1,4 +1,4 @@
-import { FieldKind, MergeStrategyKind, TableDescriptor } from './descriptors'
+import { FieldKind, MergeStrategyKind, TableDescriptor } from '@gammaray/core'
 
 // A flat type-A table joined many-to-many to contacts via contact_tags.
 export const tagDescriptor: TableDescriptor = {

@@ -32,6 +32,9 @@ importers:
       '@gammaray/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@gammaray/notesync-schema':
+        specifier: workspace:*
+        version: link:../../packages/notesync-schema
       '@nestjs/apollo':
         specifier: ^12.2.0
         version: 12.2.2(@apollo/server@4.13.0(graphql@16.14.2))(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)(@nestjs/graphql@12.2.2(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)(class-transformer@0.5.1)(class-validator@0.14.4)(graphql@16.14.2)(reflect-metadata@0.2.2))(graphql@16.14.2)
@@ -147,6 +150,9 @@ importers:
       '@gammaray/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@gammaray/notesync-schema':
+        specifier: workspace:*
+        version: link:../../packages/notesync-schema
       '@gammaray/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -236,6 +242,16 @@ importers:
       tsconfig-paths:
         specifier: ^4.2.0
         version: 4.2.0
+      typescript:
+        specifier: '*'
+        version: 5.9.3
+
+  packages/notesync-schema:
+    dependencies:
+      '@gammaray/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
       typescript:
         specifier: '*'
         version: 5.9.3

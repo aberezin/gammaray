@@ -3,15 +3,13 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle, SyncIndicator } from '@gammaray/ui'
+import { SyncStatus, type RowRecord, type ContactRevisionDto } from '@gammaray/core'
 import {
-  SyncStatus,
   contactDescriptor,
   companyDescriptor,
   tagDescriptor,
   contactTagDescriptor,
-  type RowRecord,
-  type ContactRevisionDto,
-} from '@gammaray/core'
+} from '@gammaray/notesync-schema'
 import { getDatabase } from '@/lib/rxdb'
 import { ResetLocalButton } from '@/components/ResetLocalButton'
 import { startRowReplication, BatchCoordinator } from '@/lib/batch-sync'

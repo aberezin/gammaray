@@ -1,4 +1,4 @@
-import { FieldKind, MergeStrategyKind, TableDescriptor } from './descriptors'
+import { FieldKind, MergeStrategyKind, TableDescriptor } from '@gammaray/core'
 
 // The first concrete type-A table: a flat contact row, no foreign keys, shared
 // across all authenticated clients. Drives schema-driven rendering on the client

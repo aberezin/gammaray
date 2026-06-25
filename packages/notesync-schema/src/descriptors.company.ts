@@ -1,4 +1,4 @@
-import { FieldKind, MergeStrategyKind, TableDescriptor } from './descriptors'
+import { FieldKind, MergeStrategyKind, TableDescriptor } from '@gammaray/core'
 
 // The company table — referenced many-to-one by contacts. A flat type-A table;
 // with batch sync it also supports in-app create (not just seeded lookup).
