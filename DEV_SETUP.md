@@ -32,11 +32,25 @@ Useful when you want Next.js Fast Refresh without rebuilding the container.
 ```bash
 # Terminal 1: backend only
 docker compose up -d postgres api
+# (if the Dockerized frontend is up, free port 3000: docker compose stop frontend)
 
 # Terminal 2: frontend on the host
-pnpm install            # one-time
-pnpm --filter @gammaray/app-one dev
+pnpm install                       # one-time
+scripts/run-frontend-host.sh       # dev (Fast Refresh); pass `prod` for a stable build
 ```
+
+**Use the script, not a bare `pnpm --filter @gammaray/app-one dev`.** Running the
+frontend on the host correctly needs a few easy-to-forget settings that the
+script bakes in — skipping them produces confusing failures:
+
+- `AUTH_TRUST_HOST=true` — without it Auth.js rejects every session
+  (`UntrustedHost`), the client shows a NextAuth "server configuration" error,
+  and sync reports **Unauthorized**. (The container sets this in compose.)
+- A raised open-file limit — the Turbopack dev watcher over this monorepo can
+  hit the default macOS limit and spew `EMFILE: too many open files` (most
+  likely right after a reboot, which resets limits to defaults).
+- `AUTH_SECRET` (from `apps/app-one/.env.local`) and the `localhost:3001` API
+  URLs for both call sites.
 
 Here the frontend runs on the host, so both its browser-side and server-side
 calls reach the API at `localhost:3001` (the published API port). You do **not**
@@ -107,6 +121,16 @@ docker compose up -d
 pnpm --filter @gammaray/app-one test:e2e
 ```
 
+**Boot smoke test.** `tests/smoke.spec.ts` is a fast guard that the app actually
+boots, authenticates, and reaches **Synced** against whatever is serving :3000
+(Dockerized *or* host) — with no error banner and no reload loop. It catches the
+class of failure the rest of the suite assumes away: a crash-looping dev server
+(e.g. a stale `.next` cache leaking into the image — see the `.dockerignore`) or
+a misconfigured host (missing `AUTH_TRUST_HOST`). Run it against a running stack:
+```bash
+pnpm --filter @gammaray/app-one test:e2e smoke.spec.ts
+```
+
 ### 4. Check the API directly (optional)
 ```bash
 curl -s http://localhost:3001/graphql -X POST \
@@ -160,6 +184,17 @@ docker compose stop
   which is Colima's forwarder), kill it: `lsof -ti :3000 | xargs kill`
 - Then `docker compose up -d` (or restart your local `pnpm dev`). Colima forwards
   both 3000 and 3001 to the host normally once the port is free.
+
+**Browser stuck in an endless refresh loop (Dockerized frontend)**
+- The dev server is crash-looping. Check: `docker logs gammaray-frontend-1 | grep -c FATAL` — a non-zero, growing count means Turbopack is panicking (`Next.js package not found`) on every compile, and the HMR client reloading after each crash is the visible loop.
+- Root cause is almost always **host build artifacts leaking into the image**: the build context is the repo root, so a host `.next` cache or host `node_modules` copied in makes Turbopack read cache entries with host paths. The root `.dockerignore` excludes them — confirm it exists and that the build context is small (`Sending build context to Docker daemon  …kB`, not hundreds of MB). Rebuild clean: `docker compose build --no-cache frontend && docker compose up -d frontend`.
+- The boot smoke test (`tests/smoke.spec.ts`) catches this regression.
+
+**"Sync error — local data may be out of date · Unauthorized" / NextAuth "server configuration" error (frontend on the host)**
+- You started the host frontend without `AUTH_TRUST_HOST=true` (Auth.js logs `UntrustedHost`). Use `scripts/run-frontend-host.sh`, which sets it.
+
+**`EMFILE: too many open files, watch` (frontend on the host)**
+- The dev watcher exhausted the open-file limit (common right after a reboot). Use `scripts/run-frontend-host.sh` (it raises the limit), or raise it yourself: `ulimit -n 65536`.
 
 **Data integrity errors ("missing reference...")**
 - Database may have stale data
