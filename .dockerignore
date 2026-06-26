@@ -1,0 +1,26 @@
+# Build-context excludes (context is the repo root; see docker-compose.yml).
+#
+# CRITICAL: never let host-built artifacts leak into images. The Dockerfiles
+# COPY `packages` and `apps/<app>` and then run `pnpm install` inside the image.
+# If the host's `.next` Turbopack cache or host `node_modules` symlinks are
+# copied in, the dev server reads cache entries that reference host paths and
+# panics with "Next.js package not found" (an intermittent crash-loop that
+# manifests as an endless browser refresh). Excluding them forces a clean,
+# deterministic install from source. Built package `dist/` is intentionally
+# NOT excluded — core/auth/notesync-schema resolve via dist (built per the
+# CLAUDE.md build order before `docker compose build`).
+**/node_modules
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+
+# VCS / tooling / local junk
+.git
+.gitignore
+**/.DS_Store
+**/*.log
+
+# Test + report output
+**/playwright-report
+**/test-results
+**/.playwright

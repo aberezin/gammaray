@@ -1,14 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { EntityManager, ObjectLiteral, EntityTarget } from 'typeorm'
+import { dependencyOrder, type TableDescriptor } from '@gammaray/core'
 import {
   companyDescriptor,
   contactDescriptor,
   categoryDescriptor,
   tagDescriptor,
   contactTagDescriptor,
-  dependencyOrder,
-  type TableDescriptor,
-} from '@gammaray/core'
+} from '@gammaray/notesync-schema'
 import {
   CompanyEntity,
   ContactEntity,

@@ -1,4 +1,4 @@
-import { FieldKind, MergeStrategyKind, TableDescriptor } from './descriptors'
+import { FieldKind, MergeStrategyKind, TableDescriptor } from '@gammaray/core'
 
 // A self-referential tree: parentId references another category. Exercises the
 // batch coordinator's reference validation against DB ∪ batch (so a child can be

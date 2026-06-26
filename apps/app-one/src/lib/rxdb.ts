@@ -2,7 +2,7 @@ import { createRxDatabase, removeRxDatabase, addRxPlugin, RxDatabase, RxCollecti
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode'
 import type { NoteRxDocument, RowRecord } from '@gammaray/core'
-import { contactDescriptor, companyDescriptor, categoryDescriptor, tagDescriptor, contactTagDescriptor } from '@gammaray/core'
+import { contactDescriptor, companyDescriptor, categoryDescriptor, tagDescriptor, contactTagDescriptor } from '@gammaray/notesync-schema'
 import { rxSchemaFromDescriptor } from './rx-schema'
 
 if (process.env.NODE_ENV === 'development') {
