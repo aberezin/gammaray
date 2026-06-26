@@ -4,6 +4,10 @@
     "jsx": "react-jsx",
     "module": "esnext",
     "moduleResolution": "bundler",
+    // These are browser components; the root tsconfig's lib is ES2022 only, so
+    // declare DOM here for a standalone `tsc --noEmit`. (Next supplies DOM when it
+    // transpiles the package in-app, but the package should type-check on its own.)
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "noEmit": true,
     "paths": {
       "@gammaray/core": ["../core/src"]
