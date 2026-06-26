@@ -39,7 +39,7 @@ pnpm install                       # one-time
 scripts/run-frontend-host.sh       # dev (Fast Refresh); pass `prod` for a stable build
 ```
 
-**Use the script, not a bare `pnpm --filter @gammaray/app-one dev`.** Running the
+**Use the script, not a bare `pnpm --filter @gammaray/example dev`.** Running the
 frontend on the host correctly needs a few easy-to-forget settings that the
 script bakes in — skipping them produces confusing failures:
 
@@ -49,7 +49,7 @@ script bakes in — skipping them produces confusing failures:
 - A raised open-file limit — the Turbopack dev watcher over this monorepo can
   hit the default macOS limit and spew `EMFILE: too many open files` (most
   likely right after a reboot, which resets limits to defaults).
-- `AUTH_SECRET` (from `apps/app-one/.env.local`) and the `localhost:3001` API
+- `AUTH_SECRET` (from `apps/example/.env.local`) and the `localhost:3001` API
   URLs for both call sites.
 
 Here the frontend runs on the host, so both its browser-side and server-side
@@ -118,7 +118,7 @@ docker compose up -d
 
 ### 3. Run the e2e suite
 ```bash
-pnpm --filter @gammaray/app-one test:e2e
+pnpm --filter @gammaray/example test:e2e
 ```
 
 **Boot smoke test.** `tests/smoke.spec.ts` is a fast guard that the app actually
@@ -128,7 +128,7 @@ class of failure the rest of the suite assumes away: a crash-looping dev server
 (e.g. a stale `.next` cache leaking into the image — see the `.dockerignore`) or
 a misconfigured host (missing `AUTH_TRUST_HOST`). Run it against a running stack:
 ```bash
-pnpm --filter @gammaray/app-one test:e2e smoke.spec.ts
+pnpm --filter @gammaray/example test:e2e smoke.spec.ts
 ```
 
 ### 4. Check the API directly (optional)

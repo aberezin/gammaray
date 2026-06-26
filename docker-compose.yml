@@ -43,7 +43,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: apps/app-one/Dockerfile
+      dockerfile: apps/example/Dockerfile
     ports:
       - "${PORT:-3000}:3000"
     environment:
@@ -56,7 +56,7 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-3001}
       # Server-side calls (NextAuth authorize/refresh in the Next process) run
       # inside this container, where the API is the `api` compose service on its
-      # fixed internal port — NOT localhost. See apps/app-one/src/auth.ts.
+      # fixed internal port — NOT localhost. See apps/example/src/auth.ts.
       API_INTERNAL_URL: http://api:3001
       # Let NextAuth trust the incoming host/port (instances run on different
       # host ports); avoids hard-coding a single callback URL.
@@ -65,7 +65,7 @@ services:
       api:
         condition: service_started
     volumes:
-      - ./apps/app-one/src:/app/apps/app-one/src
+      - ./apps/example/src:/app/apps/example/src
       - ./packages:/app/packages
 
 volumes:

@@ -8,7 +8,7 @@ RUN npm install -g pnpm
 # Copy workspace files and root configs
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json ./
 COPY packages ./packages
-COPY apps/app-one ./apps/app-one
+COPY apps/example ./apps/example
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
@@ -21,4 +21,4 @@ ENV NODE_ENV=development
 ENV PORT=3000
 
 # Start the development server
-CMD ["pnpm", "--filter", "@gammaray/app-one", "dev"]
+CMD ["pnpm", "--filter", "@gammaray/example", "dev"]

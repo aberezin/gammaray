@@ -14,7 +14,7 @@
 - API Style: GraphQL
 
 ## Repository Structure
-- apps/app-one
+- apps/example
 - apps/app-two
 - apps/api
 - packages/ui
@@ -134,7 +134,7 @@ common-ancestor revision still existing.
 
 Non-feature maintenance and tooling tasks, tracked here until scheduled.
 
-- **Update Next.js to the latest version.** `apps/app-one` is on Next.js 15
+- **Update Next.js to the latest version.** `apps/example` is on Next.js 15
   (App Router). Bump to the latest release, review the changelog/codemods for
   breaking changes, and re-run the e2e suite. Watch for App Router, caching, and
   `next-auth`/Auth.js v5 compatibility shifts.

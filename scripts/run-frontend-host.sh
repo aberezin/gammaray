@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the example frontend (apps/app-one) on the HOST, talking to the
+# Run the example frontend (apps/example) on the HOST, talking to the
 # containerized API. This is the fast Fast-Refresh iteration path (see
 # DEV_SETUP.md) and an alternative to the Dockerized frontend.
 #
@@ -40,14 +40,14 @@ export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL:-ws://localhost:3001}"
 export NEXTAUTH_URL="${NEXTAUTH_URL:-http://localhost:3000}"
 
 # AUTH_SECRET is required by NextAuth. Inherit it if exported, else read the
-# local dev default from apps/app-one/.env.local (git-ignored).
-if [ -z "${AUTH_SECRET:-}" ] && [ -f apps/app-one/.env.local ]; then
-  AUTH_SECRET="$(grep -E '^AUTH_SECRET=' apps/app-one/.env.local | head -1 | cut -d= -f2-)"
+# local dev default from apps/example/.env.local (git-ignored).
+if [ -z "${AUTH_SECRET:-}" ] && [ -f apps/example/.env.local ]; then
+  AUTH_SECRET="$(grep -E '^AUTH_SECRET=' apps/example/.env.local | head -1 | cut -d= -f2-)"
   export AUTH_SECRET
 fi
 if [ -z "${AUTH_SECRET:-}" ]; then
-  echo "[run-frontend-host] ERROR: AUTH_SECRET is not set and apps/app-one/.env.local has none." >&2
-  echo "  Set it: echo 'AUTH_SECRET=change-me-nextauth-in-production' > apps/app-one/.env.local" >&2
+  echo "[run-frontend-host] ERROR: AUTH_SECRET is not set and apps/example/.env.local has none." >&2
+  echo "  Set it: echo 'AUTH_SECRET=change-me-nextauth-in-production' > apps/example/.env.local" >&2
   exit 1
 fi
 
@@ -76,10 +76,10 @@ fi
 echo "[run-frontend-host] mode=${MODE}  API=${NEXT_PUBLIC_API_URL}  AUTH_TRUST_HOST=${AUTH_TRUST_HOST}  ulimit -n=$(ulimit -n)"
 
 if [ "${MODE}" = "prod" ]; then
-  pnpm --filter @gammaray/app-one build
-  exec pnpm --filter @gammaray/app-one start
+  pnpm --filter @gammaray/example build
+  exec pnpm --filter @gammaray/example start
 elif [ "${MODE}" = "dev" ]; then
-  exec pnpm --filter @gammaray/app-one dev
+  exec pnpm --filter @gammaray/example dev
 else
   echo "[run-frontend-host] ERROR: unknown mode '${MODE}' (expected 'dev' or 'prod')" >&2
   exit 1

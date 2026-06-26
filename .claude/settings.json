@@ -15,7 +15,7 @@
       "Bash(git stash *)",
       "Bash(gh pr *)",
       "Bash(pnpm --filter @gammaray/api lint)",
-      "Bash(pnpm --filter @gammaray/app-one lint)",
+      "Bash(pnpm --filter @gammaray/example lint)",
       "Bash(docker context ls)",
       "ToolSearch",
       "LSP"
