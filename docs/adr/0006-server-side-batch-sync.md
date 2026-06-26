@@ -85,5 +85,5 @@ parent is in the batch set — and the deferred constraint confirms at commit.
 Per-row attribution is preserved (each bad row gets its own REJECTED + reason).
 
 Verified end to end: a batch listing a child *before* its parent applies both
-(`apps/app-one/tests/categories-tree.spec.ts`), and a category with a bogus
+(`apps/example/tests/categories-tree.spec.ts`), and a category with a bogus
 `parentId` is REJECTED with `missing reference category:<id>`.

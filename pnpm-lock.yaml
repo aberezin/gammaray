@@ -142,7 +142,7 @@ importers:
         specifier: '*'
         version: 5.9.3
 
-  apps/app-one:
+  apps/example:
     dependencies:
       '@gammaray/auth':
         specifier: workspace:*

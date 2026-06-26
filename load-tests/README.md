@@ -4,7 +4,7 @@ Load and soak tests for the NoteSync API — specifically the realtime path
 (REST auth → GraphQL mutations → graphql-ws WebSocket subscriptions).
 
 These are **separate** from the Playwright functional tests in
-`apps/app-one/tests`. Functional tests assert correctness; these measure
+`apps/example/tests`. Functional tests assert correctness; these measure
 behaviour under concurrency (connection capacity, event-delivery latency,
 conflict rates).
 

@@ -34,7 +34,7 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: 'pnpm --filter @gammaray/app-one dev',
+      command: 'pnpm --filter @gammaray/example dev',
       url: 'http://localhost:3000',
       reuseExistingServer: true,
       timeout: 30_000,

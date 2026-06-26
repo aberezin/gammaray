@@ -48,7 +48,7 @@ against the current links, creating/soft-deleting join rows that ride the shared
   UI handles the rest.
 - The batch path is now proven for multi-parent nodes — a join row listed
   *before* both of its parents in one batch applies (verified by
-  `apps/app-one/tests/contacts-tags.spec.ts`), and a link to a non-existent
+  `apps/example/tests/contacts-tags.spec.ts`), and a link to a non-existent
   target is isolated-`REJECTED` while siblings commit.
 - A *virtual* field is a new descriptor concept. The rule is strict and
   load-bearing: anything touching storage or the wire must skip
