@@ -2,7 +2,7 @@ import { createRxDatabase, removeRxDatabase, addRxPlugin, RxDatabase, RxCollecti
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode'
 import type { NoteRxDocument, RowRecord } from '@gammaray/core'
-import { contactDescriptor, companyDescriptor, categoryDescriptor, tagDescriptor, contactTagDescriptor } from '@gammaray/notesync-schema'
+import { descriptors } from './descriptor-registry'
 import { rxSchemaFromDescriptor } from './rx-schema'
 
 if (process.env.NODE_ENV === 'development') {
@@ -19,32 +19,40 @@ export type AppCollections = {
 }
 export type AppDatabase = RxDatabase<AppCollections>
 
+// Access a type-A collection by name (descriptor-driven code holds the
+// collection as a string). All type-A collections are RxCollection<RowRecord>;
+// this isolates the one unavoidable dynamic-index cast.
+export function rowCollection(db: AppDatabase, collection: string): RxCollection<RowRecord> {
+  return (db.collections as unknown as Record<string, RxCollection<RowRecord>>)[collection]
+}
+
 const DB_NAME = 'notesync'
 
-const collections = {
-  note: {
-    schema: {
-      version: 0,
-      type: 'object',
-      primaryKey: 'id',
-      properties: {
-        id: { type: 'string', maxLength: 36 },
-        content: { type: 'string', default: '' },
-        version: { type: 'integer', default: 0 },
-        updatedAt: { type: 'string' },
-        _deleted: { type: 'boolean', default: false },
-      },
-      required: ['id', 'content', 'version', 'updatedAt'],
+const noteCollection = {
+  schema: {
+    version: 0,
+    type: 'object',
+    primaryKey: 'id',
+    properties: {
+      id: { type: 'string', maxLength: 36 },
+      content: { type: 'string', default: '' },
+      version: { type: 'integer', default: 0 },
+      updatedAt: { type: 'string' },
+      _deleted: { type: 'boolean', default: false },
     },
+    required: ['id', 'content', 'version', 'updatedAt'],
   },
-  // The type-A collections' schemas are generated from their descriptors, so
-  // they evolve whenever a descriptor field is added.
-  contact: { schema: rxSchemaFromDescriptor(contactDescriptor) },
-  company: { schema: rxSchemaFromDescriptor(companyDescriptor) },
-  category: { schema: rxSchemaFromDescriptor(categoryDescriptor) },
-  tag: { schema: rxSchemaFromDescriptor(tagDescriptor) },
-  contact_tag: { schema: rxSchemaFromDescriptor(contactTagDescriptor) },
 } as const
+
+// The type-A collections are built from the descriptor registry — their RxDB
+// schemas are generated from each descriptor, so a new type-A table needs no
+// edit here (add it to `notesyncDescriptors`). Schemas evolve automatically
+// when a descriptor field changes; a stale persisted schema is wiped + rebuilt
+// (see getDatabase's DB6 handling).
+const collections = {
+  note: noteCollection,
+  ...Object.fromEntries(descriptors.map((d) => [d.collection, { schema: rxSchemaFromDescriptor(d) }])),
+}
 
 let dbPromise: Promise<AppDatabase> | null = null
 
