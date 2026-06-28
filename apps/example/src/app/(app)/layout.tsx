@@ -1,7 +1,7 @@
 import { auth } from '@/auth'
 import { redirect } from 'next/navigation'
-import { SyncHealthBanner } from '@/components/SyncHealthBanner'
-import { DataEpochGuard } from '@/components/DataEpochGuard'
+import { SyncHealthBanner } from '@/lib/app-client'
+import { DataEpochGuard } from '@/lib/app-client'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()

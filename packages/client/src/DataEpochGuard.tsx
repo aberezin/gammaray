@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect } from 'react'
-import { makeGqlClient } from '@/lib/graphql-client'
-import { clearLocalDatabase } from '@/lib/rxdb'
+import { makeGqlClient } from './graphql-client'
+import { clearLocalDatabase } from './rxdb'
 
 // ADR 0012: detect a destructive server reset and reslate the local replica.
 // The server bumps its "data epoch" on out-of-app changes (migrate/seed/manual);

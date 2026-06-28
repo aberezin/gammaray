@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@gammaray/core": "workspace:*",
+    "@gammaray/client": "workspace:*",
     "@gammaray/notesync-schema": "workspace:*",
     "@gammaray/auth": "workspace:*",
     "@gammaray/ui": "workspace:*",

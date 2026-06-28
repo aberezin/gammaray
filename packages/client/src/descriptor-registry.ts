@@ -1,24 +1,19 @@
 import { FieldKind, type FieldDescriptor, type TableDescriptor } from '@gammaray/core'
-import { notesyncDescriptors } from '@gammaray/notesync-schema'
+import { clientConfig } from './config'
 
 // The client-side descriptor registry — the analog of the server's RowRegistry.
-// One source of truth (the example app's `notesyncDescriptors`) drives the RxDB
-// collections, the generic RecordPage, and all descriptor-derived wiring, so a
-// new type-A table is a descriptor + one array entry, not edits scattered across
-// the client.
+// The descriptor set is supplied per app via configureClient() (notesync's
+// `notesyncDescriptors`, music's `musicDescriptors`, …), so this package is
+// app-agnostic: it drives the RxDB collections, the generic RecordPage, and all
+// descriptor-derived wiring from whatever descriptors the app registered.
 
-export const descriptors: TableDescriptor[] = notesyncDescriptors
-
-export const descriptorByCollection: Record<string, TableDescriptor> = Object.fromEntries(
-  descriptors.map((d) => [d.collection, d]),
-)
-
-export const descriptorByTable: Record<string, TableDescriptor> = Object.fromEntries(
-  descriptors.map((d) => [d.table, d]),
-)
+/** The registered app's descriptors (set via configureClient). */
+export function allDescriptors(): TableDescriptor[] {
+  return clientConfig().descriptors
+}
 
 export function getDescriptor(collection: string): TableDescriptor {
-  const d = descriptorByCollection[collection]
+  const d = allDescriptors().find((x) => x.collection === collection)
   if (!d) throw new Error(`No descriptor registered for collection "${collection}"`)
   return d
 }

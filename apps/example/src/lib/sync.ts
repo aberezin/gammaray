@@ -4,8 +4,8 @@ import { Observable } from 'rxjs'
 import type { RxCollection } from 'rxdb'
 import type { NoteRxDocument, NoteDto, ConflictResultDto } from '@gammaray/core'
 import type { GraphQLClient } from 'graphql-request'
-import { type TokenGetter } from './token'
-import { syncHealth } from '@/store/sync-health.store'
+import { type TokenGetter } from '@/lib/app-client'
+import { syncHealth } from '@/lib/app-client'
 
 const PULL_NOTE = `
   query {

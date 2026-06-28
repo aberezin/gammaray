@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { contactDescriptor } from '@gammaray/notesync-schema'
-import { RecordPage } from '@/components/RecordPage'
+import { RecordPage } from '@/lib/app-client'
 
 // The contacts page is now just a descriptor + a title + nav links — all the
 // data wiring lives in the generic RecordPage / useRecordPage. The contact
