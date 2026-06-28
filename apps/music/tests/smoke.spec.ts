@@ -33,4 +33,12 @@ test.describe('Crate boot smoke', () => {
       await expect(page.getByRole('heading', { name })).toBeVisible({ timeout: 10_000 })
     }
   })
+
+  test('seeded catalog syncs down (artists + the large playlist)', async ({ page }) => {
+    await register(page, uniqueEmail('seed'))
+    await page.getByRole('link', { name: 'Artists' }).click()
+    await expect(page.getByText('Miles Davis')).toBeVisible({ timeout: 10_000 })
+    await page.getByRole('link', { name: 'Playlists' }).click()
+    await expect(page.getByText('Crate Essentials')).toBeVisible({ timeout: 10_000 })
+  })
 })

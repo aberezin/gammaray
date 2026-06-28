@@ -21,7 +21,8 @@ import { DataSource } from 'typeorm'
 import { bumpDataEpoch } from '@gammaray/database'
 import { AppModule } from '../app.module'
 import { RowRegistry } from '../engine/row-registry'
-import { coreSeed, type SeedRow } from './seed-data'
+import { type SeedRow } from './seed-data'
+import { enabledSeed } from './schema-seeds'
 
 const SEED_CLIENT_ID = 'seed'
 
@@ -37,7 +38,7 @@ async function main() {
     // Group the fixture by table, then apply tables in dependency order
     // (companies before contacts, etc.) so soft references resolve.
     const byTable = new Map<string, SeedRow[]>()
-    for (const row of coreSeed) {
+    for (const row of enabledSeed()) {
       const list = byTable.get(row.table) ?? []
       list.push(row)
       byTable.set(row.table, list)
