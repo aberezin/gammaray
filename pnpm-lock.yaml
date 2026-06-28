@@ -295,6 +295,16 @@ importers:
         specifier: '*'
         version: 5.9.3
 
+  packages/music-schema:
+    dependencies:
+      '@gammaray/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: '*'
+        version: 5.9.3
+
   packages/notesync-schema:
     dependencies:
       '@gammaray/core':
