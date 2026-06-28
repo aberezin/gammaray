@@ -68,13 +68,17 @@ export const SCHEMA_TABLES: Record<string, TableDef[]> = {
 // Which schemas THIS api instance serves, from config. Phase 1: both (one shared
 // backend for both example apps). Phase 2 (docs/example-app-spec §7d): set
 // GAMMARAY_SCHEMAS per api instance (e.g. 'music') so each app gets its own
-// logical database on the shared server — a config change, not a rewrite.
-export function enabledSchemaTables(): TableDef[] {
-  const names = (process.env.GAMMARAY_SCHEMAS ?? 'notesync,music')
+// logical database on the shared server — a config change, not a rewrite. Shared
+// by table registration (here) and seeding (schema-seeds.ts).
+export function enabledSchemaNames(): string[] {
+  return (process.env.GAMMARAY_SCHEMAS ?? 'notesync,music')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  return names.flatMap((name) => {
+}
+
+export function enabledSchemaTables(): TableDef[] {
+  return enabledSchemaNames().flatMap((name) => {
     const tables = SCHEMA_TABLES[name]
     if (!tables) {
       throw new Error(`Unknown schema "${name}" in GAMMARAY_SCHEMAS (known: ${Object.keys(SCHEMA_TABLES).join(', ')})`)
