@@ -10,6 +10,15 @@ import { CategoryEntity } from './entities/category.entity'
 import { TagEntity } from './entities/tag.entity'
 import { ContactTagEntity } from './entities/contact-tag.entity'
 import { AppMetaEntity } from './entities/app-meta.entity'
+import { LabelEntity } from './entities/label.entity'
+import { ArtistEntity } from './entities/artist.entity'
+import { GenreEntity } from './entities/genre.entity'
+import { AlbumEntity } from './entities/album.entity'
+import { TrackEntity } from './entities/track.entity'
+import { PlaylistEntity } from './entities/playlist.entity'
+import { AlbumGenreEntity } from './entities/album-genre.entity'
+import { TrackArtistEntity } from './entities/track-artist.entity'
+import { PlaylistTrackEntity } from './entities/playlist-track.entity'
 
 export function createDataSource(overrides: Partial<DataSourceOptions> = {}): DataSource {
   return new DataSource({
@@ -30,6 +39,15 @@ export function createDataSource(overrides: Partial<DataSourceOptions> = {}): Da
       ContactTagEntity,
       RowRevisionEntity,
       AppMetaEntity,
+      LabelEntity,
+      ArtistEntity,
+      GenreEntity,
+      AlbumEntity,
+      TrackEntity,
+      PlaylistEntity,
+      AlbumGenreEntity,
+      TrackArtistEntity,
+      PlaylistTrackEntity,
     ],
     migrations: [__dirname + '/migrations/*.{ts,js}'],
     // Never enable synchronize — use migrations only
