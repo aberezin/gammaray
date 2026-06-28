@@ -1,22 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { EntityManager, ObjectLiteral, EntityTarget } from 'typeorm'
 import { dependencyOrder, type TableDescriptor } from '@gammaray/core'
-import {
-  companyDescriptor,
-  contactDescriptor,
-  categoryDescriptor,
-  tagDescriptor,
-  contactTagDescriptor,
-} from '@gammaray/notesync-schema'
-import {
-  CompanyEntity,
-  ContactEntity,
-  CategoryEntity,
-  TagEntity,
-  ContactTagEntity,
-} from '@gammaray/database'
 import type { ApplyOutcome, RowChangeInput } from '../batch/batch.types'
 import { GenericRowService } from './generic-row.service'
+import { enabledSchemaTables } from './schema-tables'
 
 export interface RegisteredTable {
   descriptor: TableDescriptor
@@ -29,8 +16,9 @@ export interface RegisteredTable {
 // applied, and reference-checked. Reads (rows/rowUpdated), the batch endpoint,
 // conflict resolution, and dependency ordering all consult this. Every table —
 // flat or revisioned — runs through the generic engine; per-table behavior
-// (merge strategy, history) is declared on the descriptor. Adding a table = one
-// entry here + a descriptor + an entity + a migration.
+// (merge strategy, history) is declared on the descriptor. The set of tables is
+// config-selected per app via `enabledSchemaTables()` (GAMMARAY_SCHEMAS); adding
+// a table = one entry in its schema list + a descriptor + an entity + a migration.
 @Injectable()
 export class RowRegistry {
   private readonly tables: Record<string, RegisteredTable>
@@ -44,15 +32,9 @@ export class RowRegistry {
       existing: (m, ids) => this.generic.existingIds(m, entity, ids),
     })
 
-    this.tables = {
-      company: reg(companyDescriptor, CompanyEntity),
-      category: reg(categoryDescriptor, CategoryEntity),
-      tag: reg(tagDescriptor, TagEntity),
-      contact_tag: reg(contactTagDescriptor, ContactTagEntity),
-      // Contacts is revisioned (DisjointFields merge + history) — declared on the
-      // descriptor, handled by the same generic applier.
-      contact: reg(contactDescriptor, ContactEntity),
-    }
+    this.tables = Object.fromEntries(
+      enabledSchemaTables().map(({ descriptor, entity }) => [descriptor.table, reg(descriptor, entity)]),
+    )
 
     this.order = dependencyOrder(Object.values(this.tables).map((t) => t.descriptor))
   }

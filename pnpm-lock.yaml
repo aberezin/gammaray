@@ -32,6 +32,9 @@ importers:
       '@gammaray/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@gammaray/music-schema':
+        specifier: workspace:*
+        version: link:../../packages/music-schema
       '@gammaray/notesync-schema':
         specifier: workspace:*
         version: link:../../packages/notesync-schema
