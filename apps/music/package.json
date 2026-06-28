@@ -1,0 +1,38 @@
+{
+  "name": "@gammaray/music",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3010 --hostname 0.0.0.0",
+    "build": "next build",
+    "start": "next start --port 3010",
+    "lint": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@gammaray/core": "workspace:*",
+    "@gammaray/client": "workspace:*",
+    "@gammaray/music-schema": "workspace:*",
+    "@gammaray/auth": "workspace:*",
+    "@gammaray/ui": "workspace:*",
+    "next": "^16.2.9",
+    "next-auth": "^5.0.0-beta.25",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "rxdb": "^15.35.0",
+    "dexie": "^3.2.7",
+    "graphql": "^16.9.0",
+    "graphql-request": "^7.1.0",
+    "graphql-ws": "^5.16.0",
+    "zustand": "^4.5.0",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "*"
+  }
+}
