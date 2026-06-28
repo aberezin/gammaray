@@ -1,4 +1,4 @@
-import { syncHealth } from '@/store/sync-health.store'
+import { syncHealth } from './sync-health.store'
 
 // A token getter for the long-lived client. The access token is short-lived and
 // silently refreshed server-side (Auth.js jwt callback) behind /api/token, so

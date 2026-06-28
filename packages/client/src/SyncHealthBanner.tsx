@@ -2,8 +2,8 @@
 
 import React, { useState } from 'react'
 import { signOut } from 'next-auth/react'
-import { useSyncHealth } from '@/store/sync-health.store'
-import { clearLocalDatabase } from '@/lib/rxdb'
+import { useSyncHealth } from './sync-health.store'
+import { clearLocalDatabase } from './rxdb'
 
 // A prominent, app-wide banner shown whenever sync health is "suspect". Once
 // suspect, the local UI state and the local RxDB replica are NOT trusted — the

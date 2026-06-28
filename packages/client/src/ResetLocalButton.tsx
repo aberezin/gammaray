@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { clearLocalDatabase } from '@/lib/rxdb'
+import { clearLocalDatabase } from './rxdb'
 
 // Discards this device's local copy (RxDB/IndexedDB) and reloads so replication
 // re-downloads everything from the server. Useful when the local store has

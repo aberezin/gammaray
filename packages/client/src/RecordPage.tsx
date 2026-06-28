@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from 'react'
 import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle, SyncIndicator } from '@gammaray/ui'
 import { FieldKind, type ContactRevisionDto, type TableDescriptor } from '@gammaray/core'
-import { ResetLocalButton } from '@/components/ResetLocalButton'
-import { useRecordPage, type ReferenceOption } from '@/lib/use-record-page'
+import { ResetLocalButton } from './ResetLocalButton'
+import { useRecordPage, type ReferenceOption } from './use-record-page'
 
 interface Props {
   descriptor: TableDescriptor

@@ -1,5 +1,5 @@
 import { GraphQLClient, ClientError } from 'graphql-request'
-import { syncHealth } from '@/store/sync-health.store'
+import { syncHealth } from './sync-health.store'
 import { getAccessToken, invalidateToken, type TokenGetter } from './token'
 
 const ENDPOINT = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'}/graphql`

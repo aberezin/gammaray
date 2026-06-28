@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { categoryDescriptor } from '@gammaray/notesync-schema'
-import { RecordPage } from '@/components/RecordPage'
+import { RecordPage } from '@/lib/app-client'
 
 // A self-referential tree (a category's Parent is another category) — handled by
 // the same generic RecordPage as contacts. The parentId Reference points back at

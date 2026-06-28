@@ -5,7 +5,7 @@ import type { RxCollection, WithDeleted } from 'rxdb'
 import type { GraphQLClient } from 'graphql-request'
 import { FieldKind, type RowRecord, type TableDescriptor } from '@gammaray/core'
 import { getAccessToken, type TokenGetter } from './token'
-import { syncHealth } from '@/store/sync-health.store'
+import { syncHealth } from './sync-health.store'
 
 type SyncDoc = WithDeleted<RowRecord>
 

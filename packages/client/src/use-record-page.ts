@@ -12,7 +12,7 @@ import { getDatabase, rowCollection } from './rxdb'
 import { startRowReplication, BatchCoordinator, type RowConflict } from './batch-sync'
 import { makeGqlClient } from './graphql-client'
 import { getAccessToken, primeToken } from './token'
-import { useSyncHealth } from '@/store/sync-health.store'
+import { useSyncHealth } from './sync-health.store'
 import {
   collectionsForPage,
   getDescriptor,

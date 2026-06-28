@@ -9,13 +9,17 @@ import { RevisionList } from '@/components/RevisionList'
 import { ConflictBanner } from '@/components/ConflictBanner'
 import { SyncStatus } from '@gammaray/core'
 import { useNoteStore } from '@/store/note.store'
-import { makeGqlClient } from '@/lib/graphql-client'
-import { getAccessToken, primeToken } from '@/lib/token'
-import { useSyncHealth } from '@/store/sync-health.store'
+import {
+  makeGqlClient,
+  getAccessToken,
+  primeToken,
+  useSyncHealth,
+  getDatabase,
+  getCollection,
+  ResetLocalButton,
+} from '@/lib/app-client'
 import { startReplication, resolveConflict } from '@/lib/sync'
-import { getDatabase } from '@/lib/rxdb'
-import { ResetLocalButton } from '@/components/ResetLocalButton'
-import type { RevisionDto } from '@gammaray/core'
+import type { RevisionDto, NoteRxDocument } from '@gammaray/core'
 
 interface Props {
   accessToken: string
@@ -72,7 +76,7 @@ export function NotePageClient({ accessToken }: Props) {
     const value = pendingContentRef.current
     if (value === null) return
     const db = await getDatabase()
-    const existing = await db.note.findOne().exec()
+    const existing = await getCollection<NoteRxDocument>(db, 'note').findOne().exec()
     if (!existing) {
       // Note not created by the initial pull yet — retry shortly so the buffered
       // edit isn't lost. (Avoids a second writer in Effect 1.)
@@ -94,7 +98,7 @@ export function NotePageClient({ accessToken }: Props) {
       const db = await getDatabase()
       if (!active) return
 
-      sub = db.note.find().$.subscribe((docs) => {
+      sub = getCollection<NoteRxDocument>(db, 'note').find().$.subscribe((docs) => {
         const doc = docs[0]
         if (!doc) return
         // A new accepted version (local push reconciled, or a remote edit pushed
@@ -131,7 +135,7 @@ export function NotePageClient({ accessToken }: Props) {
     async function initReplication() {
       const db = await getDatabase()
       if (!active) return
-      const collection = db.note
+      const collection = getCollection<NoteRxDocument>(db, 'note')
 
       const started = startReplication(
         collection,
@@ -245,7 +249,7 @@ export function NotePageClient({ accessToken }: Props) {
     if (suspect) return
     setContent(content)
     const db = await getDatabase()
-    const doc = await db.note.findOne().exec()
+    const doc = await getCollection<NoteRxDocument>(db, 'note').findOne().exec()
     if (doc) await doc.patch({ content })
   }
 
