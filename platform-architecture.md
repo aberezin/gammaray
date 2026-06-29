@@ -95,6 +95,12 @@ hold the detailed argument for individual decisions.
   clients detect an SDLC reset and cleanly reslate (discard + re-pull) instead of
   mis-merging; no speculative parent re-push. Extends the schema-wipe philosophy
   to data. Manual *Reset local copy* button is the escape hatch. (Merged, PR #20.)
+- [ADR 0013 — At-scale tables: per-table opt-in server pagination](./docs/adr/0013-at-scale-paged-tables.md):
+  a `paged: true` descriptor flag makes a large table server-paginated (keyset
+  `pageRows`, server-side sort/filter) instead of full-replicated, bounding memory
+  at server, client store, and UI. The cost — no full offline browse of that table
+  — is paid only by tables that opt in; small tables stay full-replica offline-first.
+  Extends the `searchable` reference opt-in (PR #31) from a field to a whole table.
 
 ## Performance & Capacity (load testing)
 
