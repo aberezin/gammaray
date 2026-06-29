@@ -1,5 +1,5 @@
 import { test, expect, Browser } from '@playwright/test'
-import { register, uniqueEmail } from './helpers'
+import { register, uniqueEmail, pickReference } from './helpers'
 
 // Type-A relations, increment 1: many-to-one (contact.company_id → company.id),
 // modeled as a soft reference (a field holding another row's id). The field is
@@ -19,7 +19,7 @@ test.describe('Contacts (type-A many-to-one reference)', () => {
     await a.getByRole('button', { name: 'New contact' }).click()
     await a.getByLabel('First name').fill('Fk')
     await a.getByLabel('Last name').fill(surname)
-    await a.getByLabel('Company').selectOption({ label: 'Acme Inc' })
+    await pickReference(a, 'Company', 'Acme Inc')
     await a.getByRole('button', { name: 'Save' }).click()
 
     // The contact's row shows the referenced company's name (not its id).
