@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectDataSource } from '@nestjs/typeorm'
-import { DataSource, EntityManager, In, ObjectLiteral, EntityTarget, Not } from 'typeorm'
+import { DataSource, EntityManager, In, ILike, ObjectLiteral, EntityTarget, Not } from 'typeorm'
 import { FieldKind, ConflictStatus, mergeRows, type TableDescriptor, type FieldDescriptor } from '@gammaray/core'
 import { RowRevisionEntity } from '@gammaray/database'
 import type { ApplyOutcome, RowChangeInput } from '../batch/batch.types'
@@ -18,6 +18,40 @@ export class GenericRowService {
   // Non-deleted rows for a table, projected to the descriptor's wire shape.
   async listRows(descriptor: TableDescriptor, entity: EntityTarget<ObjectLiteral>): Promise<Record<string, unknown>[]> {
     const rows = await this.dataSource.getRepository(entity).find({ where: { deleted: false } })
+    return rows.map((r) => projectToDescriptor(descriptor, r as Record<string, unknown>))
+  }
+
+  // Server-side typeahead for at-scale reference pickers: up to `limit` rows
+  // whose title field matches `query` (case-insensitive substring), so a large
+  // target collection is never shipped to the client in full. Empty query →
+  // the first `limit` rows (the initial dropdown).
+  async searchRows(
+    descriptor: TableDescriptor,
+    entity: EntityTarget<ObjectLiteral>,
+    query: string,
+    limit: number,
+  ): Promise<Record<string, unknown>[]> {
+    const titleField = descriptor.display.titleFields[0] ?? descriptor.identity.field
+    const q = (query ?? '').trim()
+    const where: Record<string, unknown> = { deleted: false }
+    if (q) where[titleField] = ILike(`%${q}%`)
+    const rows = await this.dataSource.getRepository(entity).find({
+      where,
+      take: Math.max(1, Math.min(limit, 100)),
+      order: { [titleField]: 'ASC' },
+    })
+    return rows.map((r) => projectToDescriptor(descriptor, r as Record<string, unknown>))
+  }
+
+  // Resolve specific rows by id (for at-scale pickers to label the currently-
+  // selected/referenced ids without replicating the whole target collection).
+  async rowsByIds(
+    descriptor: TableDescriptor,
+    entity: EntityTarget<ObjectLiteral>,
+    ids: string[],
+  ): Promise<Record<string, unknown>[]> {
+    if (ids.length === 0) return []
+    const rows = await this.dataSource.getRepository(entity).find({ where: { id: In(ids), deleted: false } })
     return rows.map((r) => projectToDescriptor(descriptor, r as Record<string, unknown>))
   }
 

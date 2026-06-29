@@ -21,6 +21,8 @@ export const trackDescriptor: TableDescriptor = {
       name: 'albumId',
       label: 'Album',
       kind: FieldKind.Reference,
+      // Demonstrates at-scale m2o typeahead (the album catalog can grow large).
+      searchable: true,
       references: { collection: 'album', titleField: 'title' },
     },
     {

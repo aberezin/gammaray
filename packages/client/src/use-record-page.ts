@@ -14,17 +14,20 @@ import { makeGqlClient } from './graphql-client'
 import { getAccessToken, primeToken } from './token'
 import { useSyncHealth } from './sync-health.store'
 import {
-  collectionsForPage,
   getDescriptor,
+  isSearchable,
   multiReferenceFields,
   quickAddTargetsOf,
   referenceFields,
+  referenceTargetOf,
+  replicatedCollectionsForPage,
   titleFieldOf,
   writableFields,
 } from './descriptor-registry'
 
-// Version history + conflict resolution go through the generic engine (JSON rows
-// keyed by table), so these are descriptor-agnostic.
+// Version history + conflict resolution + the at-scale picker queries all go
+// through the generic engine (JSON rows keyed by table), so they're descriptor-
+// agnostic.
 const REVISIONS_QUERY = `
   query RowRevisions($table: String!, $rowId: String!) {
     rowRevisions(table: $table, rowId: $rowId)
@@ -35,8 +38,10 @@ const RESOLVE_CONFLICT = `
     resolveRowConflict(table: $table, row: $row, clientId: $clientId)
   }
 `
+const SEARCH_ROWS = `query SearchRows($table: String!, $query: String, $limit: Int) { searchRows(table: $table, query: $query, limit: $limit) }`
+const ROWS_BY_IDS = `query RowsByIds($table: String!, $ids: [String!]!) { rowsByIds(table: $table, ids: $ids) }`
 
-/** A Reference/MultiReference picker option (mirrors @gammaray/ui's RecordForm). */
+/** A Reference/MultiReference picker option (mirrors @gammaray/ui). */
 export interface ReferenceOption {
   value: string
   label: string
@@ -57,10 +62,13 @@ export interface QuickAddTarget {
 export interface UseRecordPage {
   /** Primary rows with virtual MultiReference fields materialized onto them. */
   records: RowRecord[]
-  /** Options for Reference/MultiReference pickers, keyed by field name. */
-  referenceOptions: Record<string, ReferenceOption[]>
-  /** id→label maps for the list, keyed by field name. */
+  /** id→label maps per field, for the list + the form's current selections.
+   *  Non-searchable targets come from the replicated rows; searchable ones are
+   *  resolved on demand via `rowsByIds`. */
   referenceLabels: Record<string, Record<string, string>>
+  /** Async option source for a field's picker: server `searchRows` for
+   *  searchable (large) targets, in-memory filter of replicated rows otherwise. */
+  searchReference: (field: string, query: string) => Promise<ReferenceOption[]>
   /** Referenced sibling collections offered an inline quick-add + chips. */
   quickAddTargets: QuickAddTarget[]
   offline: boolean
@@ -105,17 +113,19 @@ function coerceWritable(descriptor: TableDescriptor, draft: Record<string, unkno
 
 /**
  * The generic client data-layer for one type-A table — the client-side analog of
- * the server's GenericRowService. Everything is derived from the descriptor:
- * which collections to keep live, the reference pickers/labels, the m2m
- * materialization + reconcile, CRUD, version history, and conflict handling. A
- * page that wants a different table just passes a different descriptor.
+ * the server's GenericRowService. Derived from the descriptor: which collections
+ * to keep live, the reference pickers/labels, m2m materialization + reconcile,
+ * CRUD, version history, conflict handling. Large reference targets (fields
+ * marked `searchable`) are fetched on demand instead of replicated.
  */
 export function useRecordPage(descriptor: TableDescriptor, accessToken: string): UseRecordPage {
   primeToken(accessToken)
   const suspect = useSyncHealth((s) => s.status === 'suspect')
 
-  // Live rows per collection (primary + everything it references).
+  // Live rows per replicated collection (primary + joins + non-searchable targets).
   const [data, setData] = useState<Record<string, RowRecord[]>>({})
+  // Labels for searchable targets, resolved on demand by id.
+  const [resolvedLabels, setResolvedLabels] = useState<Record<string, Record<string, string>>>({})
   const [offline, setOffline] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncStatus.Synced)
   const [conflict, setConflict] = useState<RecordConflict | null>(null)
@@ -123,8 +133,15 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
   const gqlClient = useRef(makeGqlClient())
   const clientId = useRef<string>(crypto.randomUUID())
   const primaryReplication = useRef<ReturnType<typeof startRowReplication> | null>(null)
+  const resolvedRef = useRef(resolvedLabels)
+  resolvedRef.current = resolvedLabels
 
-  const collections = useMemo(() => collectionsForPage(descriptor), [descriptor])
+  // Only replicate the primary, join, and small non-searchable target collections.
+  const collections = useMemo(() => replicatedCollectionsForPage(descriptor), [descriptor])
+  const fieldByName = useMemo(
+    () => Object.fromEntries(descriptor.fields.map((f) => [f.name, f])),
+    [descriptor],
+  )
 
   // Local subscriptions — always on, so the UI reflects local data even offline.
   useEffect(() => {
@@ -154,10 +171,10 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     setSyncStatus(offline ? SyncStatus.Offline : SyncStatus.Synced)
   }, [offline])
 
-  // Replication — every collection shares ONE BatchCoordinator so sibling writes
-  // (e.g. a new company + a contact referencing it) ride a single atomic
-  // pushBatch. Runs only while online; restarts on reconnect to flush offline
-  // edits. Conflicts on the primary table surface to the conflict banner.
+  // Replication — every replicated collection shares ONE BatchCoordinator so
+  // sibling writes (e.g. a new company + a contact referencing it) ride a single
+  // atomic pushBatch. Runs only while online; restarts on reconnect. Conflicts on
+  // the primary table surface to the conflict banner.
   useEffect(() => {
     if (offline) return
     let active = true
@@ -180,7 +197,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
         })
         return
       }
-      primaryReplication.current = started[0] ?? null
+      primaryReplication.current = started.find((r) => r != null) ?? null
     }
     void init()
     return () => {
@@ -212,32 +229,60 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     })
   }, [data, descriptor])
 
-  const referenceOptions = useMemo(() => {
-    const opts: Record<string, ReferenceOption[]> = {}
-    for (const f of referenceFields(descriptor)) {
-      const ref = f.references!
-      opts[f.name] = (data[ref.collection] ?? []).map((row) => ({
-        value: String(row.id),
-        label: String(row[ref.titleField] ?? ''),
-      }))
+  // Resolve labels for searchable targets' currently-referenced ids (by id, so we
+  // never replicate the whole catalog). Re-runs as new ids appear in `records`.
+  useEffect(() => {
+    const targets: Record<string, { titleField: string; ids: Set<string> }> = {}
+    for (const f of descriptor.fields) {
+      if (!isSearchable(f)) continue
+      const t = referenceTargetOf(f)
+      if (!t) continue
+      const entry = targets[t.collection] ?? (targets[t.collection] = { titleField: t.titleField, ids: new Set() })
+      for (const r of records) {
+        const v = r[f.name]
+        if (f.kind === FieldKind.MultiReference) {
+          if (Array.isArray(v)) v.forEach((id) => entry.ids.add(String(id)))
+        } else if (v) {
+          entry.ids.add(String(v))
+        }
+      }
     }
-    for (const f of multiReferenceFields(descriptor)) {
-      const via = f.via!
-      opts[f.name] = (data[via.targetCollection] ?? []).map((row) => ({
-        value: String(row.id),
-        label: String(row[via.titleField] ?? ''),
-      }))
+    let active = true
+    void (async () => {
+      for (const [collection, { titleField, ids }] of Object.entries(targets)) {
+        const have = resolvedRef.current[collection] ?? {}
+        const missing = [...ids].filter((id) => !(id in have))
+        if (missing.length === 0) continue
+        const table = getDescriptor(collection).table
+        const rows = await gqlClient.current
+          .request<{ rowsByIds: RowRecord[] }>(ROWS_BY_IDS, { table, ids: missing })
+          .then((d) => d.rowsByIds)
+          .catch(() => [] as RowRecord[])
+        if (!active) return
+        setResolvedLabels((prev) => ({
+          ...prev,
+          [collection]: { ...(prev[collection] ?? {}), ...Object.fromEntries(rows.map((r) => [String(r.id), String(r[titleField] ?? '')])) },
+        }))
+      }
+    })()
+    return () => {
+      active = false
     }
-    return opts
-  }, [data, descriptor])
+  }, [records, descriptor])
 
+  // id→label per field, for the list and the form's current selections.
   const referenceLabels = useMemo(() => {
     const labels: Record<string, Record<string, string>> = {}
-    for (const [field, options] of Object.entries(referenceOptions)) {
-      labels[field] = Object.fromEntries(options.map((o) => [o.value, o.label]))
+    const build = (collection: string, titleField: string, searchable: boolean): Record<string, string> =>
+      searchable
+        ? resolvedLabels[collection] ?? {}
+        : Object.fromEntries((data[collection] ?? []).map((row) => [String(row.id), String(row[titleField] ?? '')]))
+    for (const f of [...referenceFields(descriptor), ...multiReferenceFields(descriptor)]) {
+      const t = referenceTargetOf(f)
+      if (t) labels[f.name] = build(t.collection, t.titleField, isSearchable(f))
     }
     return labels
-  }, [referenceOptions])
+  }, [data, resolvedLabels, descriptor])
 
   const quickAddTargets = useMemo<QuickAddTarget[]>(() => {
     return quickAddTargetsOf(descriptor).map((t) => ({
@@ -246,6 +291,28 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
       rows: (data[t.collection] ?? []).map((row) => ({ id: String(row.id), label: String(row[t.titleField] ?? '') })),
     }))
   }, [data, descriptor])
+
+  // Async option source for a field's picker.
+  async function searchReference(field: string, query: string): Promise<ReferenceOption[]> {
+    const f = fieldByName[field]
+    if (!f) return []
+    const target = referenceTargetOf(f)
+    if (!target) return []
+    if (isSearchable(f)) {
+      const table = getDescriptor(target.collection).table
+      const d = await gqlClient.current
+        .request<{ searchRows: RowRecord[] }>(SEARCH_ROWS, { table, query, limit: 20 })
+        .catch(() => ({ searchRows: [] as RowRecord[] }))
+      return d.searchRows.map((r) => ({ value: String(r.id), label: String(r[target.titleField] ?? '') }))
+    }
+    // Non-searchable: filter the replicated rows in memory (so offline-created
+    // and quick-added rows appear immediately).
+    const q = query.trim().toLowerCase()
+    return (data[target.collection] ?? [])
+      .filter((row) => !q || String(row[target.titleField] ?? '').toLowerCase().includes(q))
+      .slice(0, 50)
+      .map((row) => ({ value: String(row.id), label: String(row[target.titleField] ?? '') }))
+  }
 
   // Reconcile each MultiReference field to its desired set by creating/removing
   // join rows. The inserts/removes ride the batch alongside the primary write, so
@@ -349,8 +416,8 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
 
   return {
     records,
-    referenceOptions,
     referenceLabels,
+    searchReference,
     quickAddTargets,
     offline,
     setOffline,
