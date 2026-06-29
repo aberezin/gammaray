@@ -55,6 +55,63 @@ export class GenericRowService {
     return rows.map((r) => projectToDescriptor(descriptor, r as Record<string, unknown>))
   }
 
+  // At-scale list for a `paged` table (ADR 0013): one keyset-paginated page,
+  // server-side sorted and filtered, so memory stays bounded regardless of row
+  // count. Keyset (not offset) for stable, constant-cost paging over a live table:
+  // order by (sortField, id) and seek past the `after` cursor's tuple. `after` is
+  // an opaque cursor minted from the previous page's last row. The client walks
+  // pages with Next/Prev (keeping its own cursor stack for Prev) and uses `total`
+  // to show "Page X of N".
+  async pageRows(
+    descriptor: TableDescriptor,
+    entity: EntityTarget<ObjectLiteral>,
+    opts: { after?: string | null; limit?: number; sort?: string; dir?: 'ASC' | 'DESC'; filter?: string },
+    manager?: EntityManager,
+  ): Promise<{ rows: Record<string, unknown>[]; nextCursor: string | null; total: number }> {
+    const repo = (manager ?? this.dataSource).getRepository(entity)
+    const idField = descriptor.identity.field
+    const titleField = descriptor.display.titleFields[0] ?? idField
+    // Only sort by a real, non-virtual field (the name is interpolated into SQL).
+    const sortable = new Set(
+      descriptor.fields.filter((f) => f.kind !== FieldKind.MultiReference).map((f) => f.name),
+    )
+    const sortField = opts.sort && sortable.has(opts.sort) ? opts.sort : titleField
+    const dir: 'ASC' | 'DESC' = opts.dir === 'DESC' ? 'DESC' : 'ASC'
+    const limit = Math.max(1, Math.min(opts.limit ?? 50, 200))
+    const filter = (opts.filter ?? '').trim()
+
+    const base = () => {
+      const qb = repo.createQueryBuilder('r').where('r.deleted = :deleted', { deleted: false })
+      if (filter) qb.andWhere(`r.${titleField} ILIKE :filter`, { filter: `%${filter}%` })
+      return qb
+    }
+
+    const total = await base().getCount()
+
+    const qb = base()
+    const cursor = decodeCursor(opts.after)
+    if (cursor) {
+      // Row-value seek: (sort, id) > (cs, ci) for ASC, < for DESC — i.e. skip
+      // everything up to and including the previous page's last row.
+      const op = dir === 'ASC' ? '>' : '<'
+      qb.andWhere(`(r.${sortField}, r.${idField}) ${op} (:cs, :ci)`, { cs: cursor.s, ci: cursor.i })
+    }
+    qb.orderBy(`r.${sortField}`, dir).addOrderBy(`r.${idField}`, dir).take(limit + 1)
+
+    const found = await qb.getMany()
+    const hasMore = found.length > limit
+    const page = found.slice(0, limit)
+    const last = page[page.length - 1] as Record<string, unknown> | undefined
+    const nextCursor =
+      hasMore && last ? encodeCursor({ s: last[sortField], i: last[idField] }) : null
+
+    return {
+      rows: page.map((r) => projectToDescriptor(descriptor, r as Record<string, unknown>)),
+      nextCursor,
+      total,
+    }
+  }
+
   // Which of the given ids exist (used by the batch coordinator to validate
   // references against DB ∪ batch).
   async existingIds(
@@ -252,6 +309,22 @@ export class GenericRowService {
         !f.readOnly &&
         f.kind !== FieldKind.MultiReference,
     )
+  }
+}
+
+// An opaque keyset cursor carrying the previous page's last (sortValue, id) tuple.
+// Base64url JSON — not meant to be parsed by the client, only echoed back.
+type Cursor = { s: unknown; i: unknown }
+function encodeCursor(c: Cursor): string {
+  return Buffer.from(JSON.stringify(c)).toString('base64url')
+}
+function decodeCursor(after?: string | null): Cursor | null {
+  if (!after) return null
+  try {
+    const c = JSON.parse(Buffer.from(after, 'base64url').toString('utf8'))
+    return c && typeof c === 'object' && 's' in c && 'i' in c ? (c as Cursor) : null
+  } catch {
+    return null
   }
 }
 
