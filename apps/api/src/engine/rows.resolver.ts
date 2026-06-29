@@ -40,6 +40,30 @@ export class RowsResolver {
     return this.generic.searchRows(entry.descriptor, entry.entity, query ?? '', limit ?? 20)
   }
 
+  // At-scale list for a `paged` table (ADR 0013): one keyset page, server-sorted
+  // and filtered. Returns { rows, nextCursor, total } as JSON. The client drives
+  // Next/Prev from `nextCursor` (+ its own cursor stack) and shows "Page X of N"
+  // from `total`. `after` is the opaque cursor from the previous page.
+  @Query(() => GraphQLJSON, { name: 'pageRows' })
+  async pageRows(
+    @Args('table') table: string,
+    @Args({ name: 'after', nullable: true }) after?: string,
+    @Args({ name: 'limit', type: () => Int, nullable: true }) limit?: number,
+    @Args({ name: 'sort', nullable: true }) sort?: string,
+    @Args({ name: 'dir', nullable: true }) dir?: string,
+    @Args({ name: 'filter', nullable: true }) filter?: string,
+  ): Promise<Record<string, unknown>> {
+    const entry = this.registry.get(table)
+    if (!entry) throw new BadRequestException(`unknown table: ${table}`)
+    return this.generic.pageRows(entry.descriptor, entry.entity, {
+      after,
+      limit,
+      sort,
+      dir: dir === 'DESC' ? 'DESC' : 'ASC',
+      filter,
+    })
+  }
+
   @Query(() => [GraphQLJSON], { name: 'rowsByIds' })
   async rowsByIds(
     @Args('table') table: string,
