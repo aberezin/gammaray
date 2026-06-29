@@ -1,5 +1,5 @@
 import { test, expect, Browser } from '@playwright/test'
-import { register, uniqueEmail } from './helpers'
+import { register, uniqueEmail, pickReference } from './helpers'
 
 // Batch sync (client): an offline-created company AND a contact referencing it
 // sync together as one atomic batch on reconnect — proving the cross-collection
@@ -27,7 +27,7 @@ test.describe('Contacts (type-A batch sync)', () => {
     await a.getByRole('button', { name: 'New contact' }).click()
     await a.getByLabel('First name').fill('Off')
     await a.getByLabel('Last name').fill(surname)
-    await a.getByLabel('Company').selectOption({ label: company })
+    await pickReference(a, 'Company', company)
     await a.getByRole('button', { name: 'Save' }).click()
     await expect(a.getByText(surname)).toBeVisible({ timeout: 8_000 })
 

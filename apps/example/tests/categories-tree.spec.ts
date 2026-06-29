@@ -1,5 +1,5 @@
 import { test, expect, request, Browser } from '@playwright/test'
-import { register, login, uniqueEmail, DEFAULT_PASSWORD } from './helpers'
+import { register, login, uniqueEmail, DEFAULT_PASSWORD, pickReference } from './helpers'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
@@ -58,7 +58,7 @@ test.describe('Categories (self-referential tree)', () => {
     // Create a child referencing the parent.
     await a.getByRole('button', { name: 'New category' }).click()
     await a.getByLabel('Name').fill(child)
-    await a.getByLabel('Parent').selectOption({ label: parent })
+    await pickReference(a, 'Parent', parent)
     await a.getByRole('button', { name: 'Save' }).click()
 
     // The child's row shows its parent's name (self-reference resolves).

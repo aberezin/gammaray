@@ -29,3 +29,17 @@ export async function login(page: Page, email: string, password = DEFAULT_PASSWO
 export async function waitForSynced(page: Page, timeout = 10_000) {
   await page.getByText('● Synced').waitFor({ timeout })
 }
+
+/**
+ * Pick an option in an at-scale Reference (typeahead) or MultiReference (token)
+ * control by its field label: focus the input, type the option text, click the
+ * matching dropdown option. Replaces the old `<select>.selectOption` /
+ * `checkbox.check` interactions.
+ */
+export async function pickReference(page: Page, label: string, optionName: string) {
+  const input = page.getByLabel(label, { exact: true })
+  await input.click()
+  await input.fill(optionName)
+  await page.getByRole('option', { name: optionName, exact: true }).first().click()
+  await input.evaluate((el) => (el as HTMLInputElement).blur())
+}

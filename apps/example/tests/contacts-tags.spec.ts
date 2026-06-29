@@ -1,5 +1,5 @@
 import { test, expect, request, Browser } from '@playwright/test'
-import { register, uniqueEmail, DEFAULT_PASSWORD } from './helpers'
+import { register, uniqueEmail, DEFAULT_PASSWORD, pickReference } from './helpers'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
@@ -94,7 +94,7 @@ test.describe('Contacts (type-A many-to-many tags)', () => {
     await a.getByRole('button', { name: 'New contact' }).click()
     await a.getByLabel('First name').fill('Tag')
     await a.getByLabel('Last name').fill(surname)
-    await a.getByRole('checkbox', { name: tag }).check()
+    await pickReference(a, 'Tags', tag)
     await a.getByRole('button', { name: 'Save' }).click()
 
     // The contact's row shows the tag name.
@@ -133,7 +133,7 @@ test.describe('Contacts (type-A many-to-many tags)', () => {
     await a.getByRole('button', { name: 'New contact' }).click()
     await a.getByLabel('First name').fill('Off')
     await a.getByLabel('Last name').fill(surname)
-    await a.getByRole('checkbox', { name: tag }).check()
+    await pickReference(a, 'Tags', tag)
     await a.getByRole('button', { name: 'Save' }).click()
     await expect(a.getByText(surname)).toBeVisible({ timeout: 8_000 })
 
