@@ -3,6 +3,11 @@ import { FieldKind, MergeStrategyKind, TableDescriptor } from '@gammaray/core'
 // Track — a core entity. Many-to-one to its album, many-to-many to the artists
 // who performed it (via track_artist). Revisioned (history + disjoint-field
 // auto-merge). Exercises Int (trackNo, durationSec) and Boolean (explicit).
+//
+// `paged` (ADR 0013): the track catalog is the app's largest table, so its list
+// is server-paginated (keyset pageRows + server sort/filter) rather than
+// full-replicated. The trade-off — no full offline browse of the catalog — is
+// acceptable here; loaded tracks are still editable and still push via pushBatch.
 export const trackDescriptor: TableDescriptor = {
   table: 'track',
   collection: 'track',
@@ -10,6 +15,7 @@ export const trackDescriptor: TableDescriptor = {
   identity: { field: 'id', clientGenerated: true },
   mergeStrategy: MergeStrategyKind.DisjointFields,
   revisioned: true,
+  paged: true,
   display: { titleFields: ['title'] },
   fields: [
     { name: 'id', label: 'ID', kind: FieldKind.Uuid, readOnly: true },

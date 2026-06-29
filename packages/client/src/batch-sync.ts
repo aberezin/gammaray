@@ -192,13 +192,22 @@ export class BatchCoordinator {
 // with push routed through the shared BatchCoordinator. Pull/stream are
 // descriptor-driven; push is batched across all collections sharing the
 // coordinator.
+//
+// `bulkPull: false` (push-only) is for an at-scale `paged` table (ADR 0013): its
+// list is fetched page-by-page from the server (see useRecordPage), so we must
+// NOT replicate the whole collection — but local writes still need to sync. We
+// keep the push path and make the bulk pull + live stream no-ops, so the local
+// store only ever holds rows the user actually created/edited (bounded), and
+// those still ride pushBatch.
 export function startRowReplication(
   descriptor: TableDescriptor,
   collection: RxCollection<RowRecord>,
   gqlClient: GraphQLClient,
   getToken: TokenGetter,
   coordinator: BatchCoordinator,
+  options?: { bulkPull?: boolean },
 ) {
+  const bulkPull = options?.bulkPull !== false
   coordinator.register(descriptor)
   // Reads/live go through the generic engine: one rows(table)/rowUpdated(table)
   // pair over a JSON scalar, keyed by the descriptor's table. The server projects
@@ -227,26 +236,32 @@ export function startRowReplication(
     pull: {
       batchSize: 1000,
       async handler() {
+        // Push-only (paged) table: never bulk-load the collection.
+        if (!bulkPull) return { documents: [], checkpoint: { pulledAt: new Date().toISOString() } }
         const data = await gqlClient.request<{ rows: Array<RowRecord & { deleted?: boolean }> }>(PULL, { table })
         const documents = (data.rows ?? []).map(toDoc)
         return { documents, checkpoint: { pulledAt: new Date().toISOString() } }
       },
-      stream$: new Observable((subscriber) => {
-        const unsub = wsClient.subscribe<{ rowUpdated: RowRecord & { deleted?: boolean } }>(
-          { query: SUB, variables: { table } },
-          {
-            next: ({ data }) => {
-              const row = data?.rowUpdated
-              if (row) {
-                subscriber.next({ documents: [toDoc(row)], checkpoint: { pulledAt: new Date().toISOString() } })
-              }
-            },
-            error: (err) => subscriber.error(err),
-            complete: () => subscriber.complete(),
-          },
-        )
-        return unsub
-      }),
+      // Push-only (paged) table: no live stream — we don't want remote updates
+      // accumulating the whole collection locally. The list refreshes via pageRows.
+      stream$: bulkPull
+        ? new Observable((subscriber) => {
+            const unsub = wsClient.subscribe<{ rowUpdated: RowRecord & { deleted?: boolean } }>(
+              { query: SUB, variables: { table } },
+              {
+                next: ({ data }) => {
+                  const row = data?.rowUpdated
+                  if (row) {
+                    subscriber.next({ documents: [toDoc(row)], checkpoint: { pulledAt: new Date().toISOString() } })
+                  }
+                },
+                error: (err) => subscriber.error(err),
+                complete: () => subscriber.complete(),
+              },
+            )
+            return unsub
+          })
+        : new Observable<{ documents: SyncDoc[]; checkpoint: { pulledAt: string } }>(() => () => {}),
     },
     push: {
       batchSize: 50,

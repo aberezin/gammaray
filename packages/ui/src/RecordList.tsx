@@ -10,11 +10,19 @@ interface Props {
   onSelect?: (id: string) => void
   /** Reference id→label maps, keyed by field name, to display names not ids. */
   references?: Record<string, Record<string, string>>
+  /** Server-side sort state (paged tables). When `onSort` is set, sortable column
+   *  headers become clickable and show the active direction. */
+  sort?: { field: string; dir: 'ASC' | 'DESC' }
+  onSort?: (field: string) => void
 }
+
+// Only scalar columns can be server-sorted (a Reference sorts by opaque id, a
+// MultiReference is virtual) — so those headers stay inert.
+const isSortable = (kind: FieldKind) => kind !== FieldKind.Reference && kind !== FieldKind.MultiReference
 
 // A schema-driven table: columns come from the descriptor, not hardcoded.
 // The identity (uuid) column is hidden — it's noise in a list — but used as key.
-export function RecordList({ descriptor, records, selectedId, onSelect, references }: Props) {
+export function RecordList({ descriptor, records, selectedId, onSelect, references, sort, onSort }: Props) {
   const idField = descriptor.identity.field
   const columns = descriptor.fields.filter((f) => f.kind !== FieldKind.Uuid)
 
@@ -40,9 +48,21 @@ export function RecordList({ descriptor, records, selectedId, onSelect, referenc
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
       <thead>
         <tr>
-          {columns.map((c) => (
-            <th key={c.name} style={th}>{c.label}</th>
-          ))}
+          {columns.map((c) => {
+            const sortable = Boolean(onSort) && isSortable(c.kind)
+            const active = sort?.field === c.name
+            return (
+              <th
+                key={c.name}
+                onClick={sortable ? () => onSort!(c.name) : undefined}
+                style={{ ...th, cursor: sortable ? 'pointer' : 'default', userSelect: 'none', color: active ? '#111827' : th.color }}
+                aria-sort={active ? (sort!.dir === 'ASC' ? 'ascending' : 'descending') : undefined}
+              >
+                {c.label}
+                {active ? (sort!.dir === 'ASC' ? ' ▲' : ' ▼') : ''}
+              </th>
+            )
+          })}
         </tr>
       </thead>
       <tbody>
