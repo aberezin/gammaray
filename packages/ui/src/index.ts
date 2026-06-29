@@ -4,6 +4,7 @@
 export { OfflineToggle } from './OfflineToggle'
 export { SyncIndicator } from './SyncIndicator'
 export { RecordList } from './RecordList'
+export { Pagination } from './Pagination'
 export { RecordForm } from './RecordForm'
 export { ReferenceSelect } from './ReferenceSelect'
 export { MultiReferenceSelect } from './MultiReferenceSelect'

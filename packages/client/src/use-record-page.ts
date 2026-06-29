@@ -40,6 +40,42 @@ const RESOLVE_CONFLICT = `
 `
 const SEARCH_ROWS = `query SearchRows($table: String!, $query: String, $limit: Int) { searchRows(table: $table, query: $query, limit: $limit) }`
 const ROWS_BY_IDS = `query RowsByIds($table: String!, $ids: [String!]!) { rowsByIds(table: $table, ids: $ids) }`
+const PAGE_ROWS = `query PageRows($table: String!, $after: String, $limit: Int, $sort: String, $dir: String, $filter: String) {
+  pageRows(table: $table, after: $after, limit: $limit, sort: $sort, dir: $dir, filter: $filter)
+}`
+
+/** One server page for an at-scale `paged` table (ADR 0013). */
+interface PageResult {
+  rows: RowRecord[]
+  nextCursor: string | null
+  total: number
+}
+
+const PAGE_SIZE = 25
+
+export type SortDir = 'ASC' | 'DESC'
+
+/** Numbered Next/Prev + sort + search controls for a `paged` table's list. */
+export interface Pagination {
+  /** 0-based current page index. */
+  pageIndex: number
+  /** Total pages for the current filter (>= 1). */
+  pageCount: number
+  /** Total matching rows for the current filter. */
+  total: number
+  pageSize: number
+  hasPrev: boolean
+  hasNext: boolean
+  loading: boolean
+  next: () => void
+  prev: () => void
+  first: () => void
+  sort: { field: string; dir: SortDir }
+  /** Sort by a field; same field toggles direction, a new field resets to ASC. */
+  setSort: (field: string) => void
+  filter: string
+  setFilter: (query: string) => void
+}
 
 /** A Reference/MultiReference picker option (mirrors @gammaray/ui). */
 export interface ReferenceOption {
@@ -71,6 +107,12 @@ export interface UseRecordPage {
   searchReference: (field: string, query: string) => Promise<ReferenceOption[]>
   /** Referenced sibling collections offered an inline quick-add + chips. */
   quickAddTargets: QuickAddTarget[]
+  /** True when this table is server-paginated (descriptor.paged) rather than
+   *  full-replicated. The list comes from `records` either way; paged tables also
+   *  expose `pagination`. */
+  paged: boolean
+  /** Pagination/sort/search controls — present only for a `paged` table. */
+  pagination: Pagination | null
   offline: boolean
   setOffline: (v: boolean) => void
   syncStatus: SyncStatus
@@ -122,6 +164,10 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
   primeToken(accessToken)
   const suspect = useSyncHealth((s) => s.status === 'suspect')
 
+  // At-scale opt-in (ADR 0013): the primary is server-paginated, not replicated.
+  const paged = descriptor.paged === true
+  const titleField = descriptor.display.titleFields[0] ?? descriptor.identity.field
+
   // Live rows per replicated collection (primary + joins + non-searchable targets).
   const [data, setData] = useState<Record<string, RowRecord[]>>({})
   // Labels for searchable targets, resolved on demand by id.
@@ -130,14 +176,33 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncStatus.Synced)
   const [conflict, setConflict] = useState<RecordConflict | null>(null)
 
+  // Paged-list state (only used when `paged`). `pageAfters[i]` is the opaque
+  // cursor that fetches page i (pageAfters[0] = null); we extend it as we learn
+  // each page's nextCursor, so Prev is a stack-pop, not a re-walk.
+  const [pagedRows, setPagedRows] = useState<RowRecord[]>([])
+  const [pageIndex, setPageIndex] = useState(0)
+  const [pageTotal, setPageTotal] = useState(0)
+  const [pageNextCursor, setPageNextCursor] = useState<string | null>(null)
+  const [pageLoading, setPageLoading] = useState(false)
+  const [sort, setSortState] = useState<{ field: string; dir: SortDir }>({ field: titleField, dir: 'ASC' })
+  const [filter, setFilterState] = useState('')
+  const pageAfters = useRef<(string | null)[]>([null])
+
   const gqlClient = useRef(makeGqlClient())
   const clientId = useRef<string>(crypto.randomUUID())
   const primaryReplication = useRef<ReturnType<typeof startRowReplication> | null>(null)
   const resolvedRef = useRef(resolvedLabels)
   resolvedRef.current = resolvedLabels
 
-  // Only replicate the primary, join, and small non-searchable target collections.
+  // Collections to replicate. A paged table's primary is excluded from the
+  // full-replicated set — it gets a push-only replication instead (writes still
+  // sync; the list is fetched via pageRows). Joins + non-searchable targets stay
+  // fully replicated so m2m materialization/reconcile and labels keep working.
   const collections = useMemo(() => replicatedCollectionsForPage(descriptor), [descriptor])
+  const liveCollections = useMemo(
+    () => (paged ? collections.filter((c) => c !== descriptor.collection) : collections),
+    [collections, paged, descriptor.collection],
+  )
   const fieldByName = useMemo(
     () => Object.fromEntries(descriptor.fields.map((f) => [f.name, f])),
     [descriptor],
@@ -150,7 +215,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     async function init() {
       const db = await getDatabase()
       if (!active) return
-      for (const collection of collections) {
+      for (const collection of liveCollections) {
         const sub = rowCollection(db, collection)
           .find()
           .$.subscribe((docs) => {
@@ -165,7 +230,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
       active = false
       subs.forEach((s) => s.unsubscribe())
     }
-  }, [collections])
+  }, [liveCollections])
 
   useEffect(() => {
     setSyncStatus(offline ? SyncStatus.Offline : SyncStatus.Synced)
@@ -187,9 +252,15 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
           setConflict({ id: c.id, mine: c.clientData, theirs: c.serverData })
         }
       })
-      started = collections.map((collection) =>
+      started = liveCollections.map((collection) =>
         startRowReplication(getDescriptor(collection), rowCollection(db, collection), gqlClient.current, getAccessToken, coordinator),
       )
+      // A paged table's primary gets a push-only replication (no bulk pull / live
+      // stream) so local writes still sync without replicating the whole table.
+      const primary = paged
+        ? startRowReplication(descriptor, rowCollection(db, descriptor.collection), gqlClient.current, getAccessToken, coordinator, { bulkPull: false })
+        : null
+      if (primary) started.push(primary)
       if (!active) {
         started.forEach((r) => {
           void r.replication.cancel()
@@ -197,7 +268,9 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
         })
         return
       }
-      primaryReplication.current = started.find((r) => r != null) ?? null
+      // The primary's replication is the one to reSync after a conflict resolve;
+      // for a paged table that's its push-only replication, else the first started.
+      primaryReplication.current = primary ?? started.find((r) => r != null) ?? null
     }
     void init()
     return () => {
@@ -208,12 +281,51 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
       })
       primaryReplication.current = null
     }
-  }, [offline, collections, descriptor])
+  }, [offline, liveCollections, paged, descriptor])
+
+  // Fetch one server page for a `paged` table (no-op otherwise). `after` selects
+  // the page via its cursor; results + total land in state. Errors mark the
+  // replica suspect (same as a failed pull) and leave the page as-is.
+  const fetchPage = async (after: string | null, index: number) => {
+    setPageLoading(true)
+    try {
+      const d = await gqlClient.current.request<{ pageRows: PageResult }>(PAGE_ROWS, {
+        table: descriptor.table,
+        after,
+        limit: PAGE_SIZE,
+        sort: sort.field,
+        dir: sort.dir,
+        filter: filter.trim() || null,
+      })
+      const result = d.pageRows
+      setPagedRows(result.rows ?? [])
+      setPageTotal(result.total ?? 0)
+      setPageIndex(index)
+      setPageNextCursor(result.nextCursor ?? null)
+      // Remember the cursor that fetched THIS page, so Prev can re-fetch it.
+      pageAfters.current[index] = after
+    } catch {
+      // leave current page; sync-health surfaces the transport error elsewhere
+    } finally {
+      setPageLoading(false)
+    }
+  }
+  const fetchPageRef = useRef(fetchPage)
+  fetchPageRef.current = fetchPage
+
+  // (Re)load page 0 whenever the sort or filter changes (and on first mount).
+  // Resetting the cursor stack discards stale Next cursors.
+  useEffect(() => {
+    if (!paged) return
+    pageAfters.current = [null]
+    void fetchPageRef.current(null, 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paged, sort.field, sort.dir, filter])
 
   // Active target ids per primary row, per MultiReference field, derived from the
   // join rows (the m2m relation lives in the join table, not as a column).
   const records = useMemo(() => {
-    const primary = data[descriptor.collection] ?? []
+    const primary = paged ? pagedRows : data[descriptor.collection] ?? []
     const mrefs = multiReferenceFields(descriptor)
     if (mrefs.length === 0) return primary
     return primary.map((r) => {
@@ -227,7 +339,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
       }
       return projected
     })
-  }, [data, descriptor])
+  }, [paged, pagedRows, data, descriptor])
 
   // Resolve labels for searchable targets' currently-referenced ids (by id, so we
   // never replicate the whole catalog). Re-runs as new ids appear in `records`.
@@ -348,14 +460,16 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
   async function create(draft: Record<string, unknown>): Promise<string> {
     const db = await getDatabase()
     const id = crypto.randomUUID()
-    await rowCollection(db, descriptor.collection).insert({
-      ...coerceWritable(descriptor, draft),
-      id,
-      version: 0,
-      updatedAt: now(),
-      _deleted: false,
-    })
+    const writable = coerceWritable(descriptor, draft)
+    await rowCollection(db, descriptor.collection).insert({ ...writable, id, version: 0, updatedAt: now(), _deleted: false })
     await reconcileMultiRefs(id, draft)
+    // Paged list: the server page won't include the new row until refetched, so
+    // show it optimistically now (authoritative refresh on the next nav/sort/
+    // search). m2m chips materialize from the replicated join rows automatically.
+    if (paged) {
+      setPagedRows((prev) => [{ ...writable, id, version: 0, updatedAt: now(), deleted: false } as RowRecord, ...prev])
+      setPageTotal((t) => t + 1)
+    }
     return id
   }
 
@@ -364,12 +478,20 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     const doc = await rowCollection(db, descriptor.collection).findOne(id).exec()
     if (doc) await doc.patch(coerceWritable(descriptor, draft))
     await reconcileMultiRefs(id, draft)
+    if (paged) {
+      const writable = coerceWritable(descriptor, draft)
+      setPagedRows((prev) => prev.map((r) => (String(r.id) === id ? { ...r, ...writable } : r)))
+    }
   }
 
   async function remove(id: string): Promise<void> {
     const db = await getDatabase()
     const doc = await rowCollection(db, descriptor.collection).findOne(id).exec()
     if (doc) await doc.remove()
+    if (paged) {
+      setPagedRows((prev) => prev.filter((r) => String(r.id) !== id))
+      setPageTotal((t) => Math.max(0, t - 1))
+    }
   }
 
   // Quick-create a referenced sibling (e.g. a company/tag) — just its title field.
@@ -414,11 +536,37 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     return d.rowRevisions
   }
 
+  // Numbered Next/Prev + sort + search for a paged table. Sort/filter changes go
+  // through state → the reset effect reloads page 0; Next/Prev fetch directly by
+  // cursor (Prev re-fetches the remembered start cursor of the previous page).
+  const setSort = (field: string) =>
+    setSortState((s) => (s.field === field ? { field, dir: s.dir === 'ASC' ? 'DESC' : 'ASC' } : { field, dir: 'ASC' }))
+  const pagination: Pagination | null = paged
+    ? {
+        pageIndex,
+        pageCount: Math.max(1, Math.ceil(pageTotal / PAGE_SIZE)),
+        total: pageTotal,
+        pageSize: PAGE_SIZE,
+        hasPrev: pageIndex > 0,
+        hasNext: pageNextCursor != null,
+        loading: pageLoading,
+        next: () => { if (pageNextCursor != null) void fetchPage(pageNextCursor, pageIndex + 1) },
+        prev: () => { if (pageIndex > 0) void fetchPage(pageAfters.current[pageIndex - 1] ?? null, pageIndex - 1) },
+        first: () => { void fetchPage(null, 0) },
+        sort,
+        setSort,
+        filter,
+        setFilter: setFilterState,
+      }
+    : null
+
   return {
     records,
     referenceLabels,
     searchReference,
     quickAddTargets,
+    paged,
+    pagination,
     offline,
     setOffline,
     syncStatus,

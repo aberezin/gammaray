@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle, SyncIndicator, type ReferenceFieldSource } from '@gammaray/ui'
+import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle, SyncIndicator, Pagination, type ReferenceFieldSource } from '@gammaray/ui'
 import { FieldKind, type ContactRevisionDto, type TableDescriptor } from '@gammaray/core'
 import { ResetLocalButton } from './ResetLocalButton'
 import { useRecordPage } from './use-record-page'
@@ -24,7 +24,16 @@ interface Props {
 // wrapper: <RecordPage descriptor={fooDescriptor} title="Foos" />.
 export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth = 1000 }: Props) {
   const page = useRecordPage(descriptor, accessToken)
-  const { records, referenceLabels, quickAddTargets, suspect } = page
+  const { records, referenceLabels, quickAddTargets, suspect, pagination } = page
+
+  // Debounced search box for a paged table (drives the server-side `filter`).
+  const [search, setSearch] = useState('')
+  const setFilter = pagination?.setFilter
+  useEffect(() => {
+    if (!setFilter) return
+    const t = setTimeout(() => setFilter(search), 250)
+    return () => clearTimeout(t)
+  }, [search, setFilter])
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -170,14 +179,40 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
         {/* minWidth:0 lets the 1fr track shrink below the table's intrinsic width;
             overflowX scrolls a wide table inside the column. */}
-        <div style={{ minWidth: 0, overflowX: 'auto' }}>
-          <RecordList
-            descriptor={descriptor}
-            records={records}
-            selectedId={selectedId}
-            onSelect={select}
-            references={referenceLabels}
-          />
+        <div style={{ minWidth: 0 }}>
+          {pagination && (
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Search ${title.toLowerCase()}…`}
+              aria-label={`Search ${title}`}
+              style={{ width: '100%', boxSizing: 'border-box', marginBottom: 12, fontSize: 13, padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, outline: 'none' }}
+            />
+          )}
+          <div style={{ overflowX: 'auto' }}>
+            <RecordList
+              descriptor={descriptor}
+              records={records}
+              selectedId={selectedId}
+              onSelect={select}
+              references={referenceLabels}
+              sort={pagination?.sort}
+              onSort={pagination ? pagination.setSort : undefined}
+            />
+          </div>
+          {pagination && (
+            <Pagination
+              pageIndex={pagination.pageIndex}
+              pageCount={pagination.pageCount}
+              total={pagination.total}
+              hasPrev={pagination.hasPrev}
+              hasNext={pagination.hasNext}
+              loading={pagination.loading}
+              onFirst={pagination.first}
+              onPrev={pagination.prev}
+              onNext={pagination.next}
+            />
+          )}
         </div>
 
         <div>
