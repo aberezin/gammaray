@@ -45,6 +45,15 @@ export interface FieldDescriptor {
   /** Not user-editable (id, version, timestamps). */
   readOnly?: boolean
   required?: boolean
+  /**
+   * For Reference/MultiReference fields whose target is LARGE: opt into at-scale
+   * handling. The client fetches picker options via server-side `searchRows`
+   * (typeahead) and resolves selected labels via `rowsByIds`, instead of
+   * replicating the whole target collection. Small/user-created targets (where
+   * offline create + quick-add matter) leave this off and keep the
+   * replicate-and-filter behavior. Default false.
+   */
+  searchable?: boolean
   /** For Reference fields: the referenced table and which field labels a row. */
   references?: { collection: string; titleField: string }
   /**

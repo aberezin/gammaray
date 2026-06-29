@@ -1,59 +1,75 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReferenceOption } from './types'
+import { useDismissable } from './use-dismissable'
 
 interface Props {
   /** Field label — used as the search input's accessible name. */
   label: string
   values: string[]
-  options: ReferenceOption[]
+  /** Async options source (server search for large targets; in-memory filter
+   *  otherwise). Called debounced with the current query. */
+  loadOptions: (query: string) => Promise<ReferenceOption[]>
+  /** Known id→label for the current values (resolved by the parent). The control
+   *  also remembers labels of options it has loaded/added. */
+  labels: Record<string, string>
   onChange: (values: string[]) => void
   disabled?: boolean
 }
 
-// At-scale many-to-many picker: a token input. Selected items are removable chips
-// in a scrollable area; a search box adds more (type → filtered dropdown → click).
-// The dropdown only renders matches (capped) and excludes already-selected items,
-// so a 150-row catalog never renders at once. (PR 1: filters in-memory `options`;
-// a later data-layer PR swaps the source for async server search.)
-const MAX_VISIBLE = 50
-
-export function MultiReferenceSelect({ label, values, options, onChange, disabled }: Props) {
+// At-scale many-to-many picker: a token input backed by an async option source.
+// Selected items are removable chips; a search box adds more. The dropdown only
+// shows what `loadOptions` returns and excludes already-selected items, so a
+// large catalog is never shipped in full.
+export function MultiReferenceSelect({ label, values, loadOptions, labels, onChange, disabled }: Props) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [results, setResults] = useState<ReferenceOption[]>([])
+  const [learned, setLearned] = useState<Record<string, string>>({})
 
-  const labelFor = useMemo(() => {
-    const m = new Map(options.map((o) => [o.value, o.label]))
-    return (id: string) => m.get(id) ?? '(unknown)'
-  }, [options])
-
+  const loadRef = useRef(loadOptions)
+  loadRef.current = loadOptions
+  const rootRef = useDismissable<HTMLDivElement>(open, () => setOpen(false))
   const selectedSet = useMemo(() => new Set(values), [values])
 
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return options
-      .filter((o) => !selectedSet.has(o.value) && (q ? o.label.toLowerCase().includes(q) : true))
-      .slice(0, MAX_VISIBLE)
-  }, [options, selectedSet, query])
+  const labelOf = (id: string) => labels[id] ?? learned[id] ?? '(unknown)'
 
-  function add(id: string) {
-    if (!selectedSet.has(id)) onChange([...values, id])
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    const timer = setTimeout(() => {
+      void loadRef.current(query).then((opts) => {
+        if (!active) return
+        setResults(opts)
+        setLearned((prev) => ({ ...prev, ...Object.fromEntries(opts.map((o) => [o.value, o.label])) }))
+      }).catch(() => { if (active) setResults([]) })
+    }, 180)
+    return () => { active = false; clearTimeout(timer) }
+  }, [query, open])
+
+  function add(id: string, lbl: string) {
+    if (!selectedSet.has(id)) {
+      setLearned((prev) => ({ ...prev, [id]: lbl }))
+      onChange([...values, id])
+    }
     setQuery('')
   }
   function remove(id: string) {
     onChange(values.filter((v) => v !== id))
   }
 
+  const visible = results.filter((o) => !selectedSet.has(o.value))
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div ref={rootRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {values.length > 0 && (
         <div style={chipArea}>
           {values.map((id) => (
             <span key={id} style={chip}>
-              {labelFor(id)}
+              {labelOf(id)}
               {!disabled && (
-                <button type="button" aria-label={`Remove ${labelFor(id)}`} onMouseDown={(e) => { e.preventDefault(); remove(id) }} style={chipX}>
+                <button type="button" aria-label={`Remove ${labelOf(id)}`} onMouseDown={(e) => { e.preventDefault(); remove(id) }} style={chipX}>
                   ×
                 </button>
               )}
@@ -75,27 +91,23 @@ export function MultiReferenceSelect({ label, values, options, onChange, disable
             placeholder="Search to add…"
             onFocus={() => setOpen(true)}
             onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
-            onBlur={() => setTimeout(() => setOpen(false), 120)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
             style={inputStyle}
           />
           {open && (
             <ul role="listbox" style={dropdown}>
-              {matches.map((o) => (
+              {visible.map((o) => (
                 <li
                   key={o.value}
                   role="option"
                   aria-selected={false}
-                  onMouseDown={(e) => { e.preventDefault(); add(o.value) }}
+                  onMouseDown={(e) => { e.preventDefault(); add(o.value, o.label) }}
                   style={optionStyle}
                 >
                   {o.label}
                 </li>
               ))}
-              {matches.length === 0 && (
-                <li style={{ ...optionStyle, color: '#9ca3af', cursor: 'default' }}>
-                  {options.length === 0 ? 'none available' : 'No matches'}
-                </li>
-              )}
+              {visible.length === 0 && <li style={{ ...optionStyle, color: '#9ca3af', cursor: 'default' }}>No matches</li>}
             </ul>
           )}
         </div>
@@ -104,64 +116,9 @@ export function MultiReferenceSelect({ label, values, options, onChange, disable
   )
 }
 
-const chipArea: React.CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 6,
-  maxHeight: 132,
-  overflowY: 'auto',
-  padding: 2,
-}
-const chip: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 4,
-  background: '#ede9fe',
-  color: '#5b21b6',
-  borderRadius: 999,
-  padding: '2px 6px 2px 10px',
-  fontSize: 13,
-}
-const chipX: React.CSSProperties = {
-  border: 'none',
-  background: 'transparent',
-  color: '#7c3aed',
-  cursor: 'pointer',
-  fontSize: 15,
-  lineHeight: 1,
-  padding: '0 2px',
-}
-const inputStyle: React.CSSProperties = {
-  padding: '8px 10px',
-  border: '1px solid #d1d5db',
-  borderRadius: 6,
-  fontSize: 14,
-  background: '#fff',
-  color: '#111827',
-  outline: 'none',
-  width: '100%',
-}
-const dropdown: React.CSSProperties = {
-  position: 'absolute',
-  zIndex: 20,
-  top: '100%',
-  left: 0,
-  right: 0,
-  margin: '4px 0 0',
-  padding: 4,
-  listStyle: 'none',
-  background: '#fff',
-  border: '1px solid #d1d5db',
-  borderRadius: 6,
-  boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-  maxHeight: 240,
-  overflowY: 'auto',
-}
-const optionStyle: React.CSSProperties = {
-  padding: '6px 8px',
-  borderRadius: 4,
-  fontSize: 14,
-  cursor: 'pointer',
-  background: 'transparent',
-  color: '#111827',
-}
+const chipArea: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 132, overflowY: 'auto', padding: 2 }
+const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, background: '#ede9fe', color: '#5b21b6', borderRadius: 999, padding: '2px 6px 2px 10px', fontSize: 13 }
+const chipX: React.CSSProperties = { border: 'none', background: 'transparent', color: '#7c3aed', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 2px' }
+const inputStyle: React.CSSProperties = { padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, background: '#fff', color: '#111827', outline: 'none', width: '100%' }
+const dropdown: React.CSSProperties = { position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, margin: '4px 0 0', padding: 4, listStyle: 'none', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', maxHeight: 240, overflowY: 'auto' }
+const optionStyle: React.CSSProperties = { padding: '6px 8px', borderRadius: 4, fontSize: 14, cursor: 'pointer', background: 'transparent', color: '#111827' }

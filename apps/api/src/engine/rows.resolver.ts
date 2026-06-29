@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Subscription, Args } from '@nestjs/graphql'
+import { Resolver, Query, Mutation, Subscription, Args, Int } from '@nestjs/graphql'
 import { UseGuards, BadRequestException } from '@nestjs/common'
 import GraphQLJSON from 'graphql-type-json'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
@@ -24,6 +24,30 @@ export class RowsResolver {
     const entry = this.registry.get(table)
     if (!entry) throw new BadRequestException(`unknown table: ${table}`)
     return this.generic.listRows(entry.descriptor, entry.entity)
+  }
+
+  // At-scale reference picker support: typeahead search over a (possibly large)
+  // target table, and id→row resolution for labeling current selections — so the
+  // client needn't replicate the whole collection. Both are descriptor-driven.
+  @Query(() => [GraphQLJSON], { name: 'searchRows' })
+  async searchRows(
+    @Args('table') table: string,
+    @Args({ name: 'query', nullable: true }) query?: string,
+    @Args({ name: 'limit', type: () => Int, nullable: true }) limit?: number,
+  ): Promise<Record<string, unknown>[]> {
+    const entry = this.registry.get(table)
+    if (!entry) throw new BadRequestException(`unknown table: ${table}`)
+    return this.generic.searchRows(entry.descriptor, entry.entity, query ?? '', limit ?? 20)
+  }
+
+  @Query(() => [GraphQLJSON], { name: 'rowsByIds' })
+  async rowsByIds(
+    @Args('table') table: string,
+    @Args({ name: 'ids', type: () => [String] }) ids: string[],
+  ): Promise<Record<string, unknown>[]> {
+    const entry = this.registry.get(table)
+    if (!entry) throw new BadRequestException(`unknown table: ${table}`)
+    return this.generic.rowsByIds(entry.descriptor, entry.entity, ids)
   }
 
   // A row's version history (revisioned tables only; empty otherwise). Replaces

@@ -2,19 +2,21 @@
 
 import React from 'react'
 import { FieldKind, type TableDescriptor } from '@gammaray/core'
-import type { ReferenceOption } from './types'
+import type { ReferenceFieldSource } from './types'
 import { ReferenceSelect } from './ReferenceSelect'
 import { MultiReferenceSelect } from './MultiReferenceSelect'
 
-export type { ReferenceOption } from './types'
+export type { ReferenceOption, ReferenceFieldSource } from './types'
+
+const EMPTY_SOURCE: ReferenceFieldSource = { loadOptions: async () => [], labels: {} }
 
 interface Props {
   descriptor: TableDescriptor
   record: Record<string, unknown>
   readOnly?: boolean
   onChange?: (field: string, value: string | string[]) => void
-  /** Options for Reference / MultiReference fields, keyed by field name. */
-  references?: Record<string, ReferenceOption[]>
+  /** Per-field option source + labels for Reference / MultiReference fields. */
+  references?: Record<string, ReferenceFieldSource>
 }
 
 // A schema-driven record form: one labeled control per descriptor field. Most
@@ -38,7 +40,8 @@ export function RecordForm({ descriptor, record, readOnly = true, onChange, refe
               <ReferenceSelect
                 label={f.label}
                 value={String(record[f.name] ?? '')}
-                options={references?.[f.name] ?? []}
+                loadOptions={(references?.[f.name] ?? EMPTY_SOURCE).loadOptions}
+                labels={(references?.[f.name] ?? EMPTY_SOURCE).labels}
                 onChange={(v) => onChange?.(f.name, v)}
                 disabled={disabled}
               />
@@ -54,7 +57,8 @@ export function RecordForm({ descriptor, record, readOnly = true, onChange, refe
               <MultiReferenceSelect
                 label={f.label}
                 values={selected}
-                options={references?.[f.name] ?? []}
+                loadOptions={(references?.[f.name] ?? EMPTY_SOURCE).loadOptions}
+                labels={(references?.[f.name] ?? EMPTY_SOURCE).labels}
                 onChange={(vals) => onChange?.(f.name, vals)}
                 disabled={disabled}
               />

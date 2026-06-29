@@ -1,10 +1,10 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle, SyncIndicator } from '@gammaray/ui'
+import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle, SyncIndicator, type ReferenceFieldSource } from '@gammaray/ui'
 import { FieldKind, type ContactRevisionDto, type TableDescriptor } from '@gammaray/core'
 import { ResetLocalButton } from './ResetLocalButton'
-import { useRecordPage, type ReferenceOption } from './use-record-page'
+import { useRecordPage } from './use-record-page'
 
 interface Props {
   descriptor: TableDescriptor
@@ -24,7 +24,7 @@ interface Props {
 // wrapper: <RecordPage descriptor={fooDescriptor} title="Foos" />.
 export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth = 1000 }: Props) {
   const page = useRecordPage(descriptor, accessToken)
-  const { records, referenceOptions, referenceLabels, quickAddTargets, suspect } = page
+  const { records, referenceLabels, quickAddTargets, suspect } = page
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -44,13 +44,22 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
     .filter((f) => f.kind === FieldKind.Reference && f.references?.collection === descriptor.collection)
     .map((f) => f.name)
 
-  function formOptions(excludeId: string | null): Record<string, ReferenceOption[]> {
-    if (!excludeId || selfRefFields.length === 0) return referenceOptions
-    const out = { ...referenceOptions }
-    for (const name of selfRefFields) {
-      out[name] = (referenceOptions[name] ?? []).filter((o) => o.value !== excludeId)
+  // Build the form's per-field option source + labels. Self-referencing fields
+  // exclude the row being edited from their own picker results.
+  function formReferences(excludeId: string | null): Record<string, ReferenceFieldSource> {
+    const refs: Record<string, ReferenceFieldSource> = {}
+    for (const f of descriptor.fields) {
+      if (f.kind !== FieldKind.Reference && f.kind !== FieldKind.MultiReference) continue
+      const isSelf = selfRefFields.includes(f.name)
+      refs[f.name] = {
+        loadOptions: async (q: string) => {
+          const opts = await page.searchReference(f.name, q)
+          return excludeId && isSelf ? opts.filter((o) => o.value !== excludeId) : opts
+        },
+        labels: referenceLabels[f.name] ?? {},
+      }
     }
-    return out
+    return refs
   }
 
   // Load the selected record's version history (revisioned tables only).
@@ -180,7 +189,7 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
                 record={draft}
                 readOnly={false}
                 onChange={(field, value) => setDraft((d) => ({ ...d, [field]: value }))}
-                references={formOptions(null)}
+                references={formReferences(null)}
               />
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button onClick={() => void handleSave()} disabled={suspect} style={saveBtn(suspect)}>Save</button>
@@ -206,7 +215,7 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
                     record={editDraft}
                     readOnly={false}
                     onChange={(field, value) => setEditDraft((d) => ({ ...d, [field]: value }))}
-                    references={formOptions(selectedId)}
+                    references={formReferences(selectedId)}
                   />
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button onClick={() => void handleSaveEdit()} disabled={suspect} style={saveBtn(suspect)}>Save</button>
@@ -214,7 +223,7 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
                   </div>
                 </>
               ) : (
-                <RecordForm descriptor={descriptor} record={selected} readOnly references={formOptions(selectedId)} />
+                <RecordForm descriptor={descriptor} record={selected} readOnly references={formReferences(selectedId)} />
               )}
 
               {descriptor.revisioned && (

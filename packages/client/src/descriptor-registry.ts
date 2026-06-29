@@ -45,6 +45,41 @@ export function collectionsForPage(d: TableDescriptor): string[] {
   return [d.collection, ...referencedCollectionsOf(d)]
 }
 
+/** The (collection, titleField) a Reference/MultiReference field points at. */
+export function referenceTargetOf(f: FieldDescriptor): { collection: string; titleField: string } | null {
+  if (f.kind === FieldKind.Reference && f.references) return { collection: f.references.collection, titleField: f.references.titleField }
+  if (f.kind === FieldKind.MultiReference && f.via) return { collection: f.via.targetCollection, titleField: f.via.titleField }
+  return null
+}
+
+/** A reference field that opts into at-scale server search (large target). */
+export function isSearchable(f: FieldDescriptor): boolean {
+  return f.searchable === true && (f.kind === FieldKind.Reference || f.kind === FieldKind.MultiReference)
+}
+
+/** Target collections fetched on demand (server search) — NOT replicated. */
+export function searchableTargetCollections(d: TableDescriptor): Set<string> {
+  const set = new Set<string>()
+  for (const f of d.fields) {
+    if (isSearchable(f)) {
+      const t = referenceTargetOf(f)
+      if (t) set.add(t.collection)
+    }
+  }
+  return set
+}
+
+/**
+ * Collections the page replicates locally: everything in collectionsForPage
+ * except searchable targets (those are fetched on demand via searchRows /
+ * rowsByIds). The primary, all join collections, and small non-searchable target
+ * collections stay live (so offline create + quick-add still work for them).
+ */
+export function replicatedCollectionsForPage(d: TableDescriptor): string[] {
+  const searchable = searchableTargetCollections(d)
+  return collectionsForPage(d).filter((c) => !searchable.has(c))
+}
+
 /** Reference (many-to-one) fields that carry a `references` target. */
 export function referenceFields(d: TableDescriptor): FieldDescriptor[] {
   return d.fields.filter((f) => f.kind === FieldKind.Reference && f.references)
@@ -78,12 +113,15 @@ export function quickAddTargetsOf(
   const joinCollections = new Set(
     multiReferenceFields(d).map((f) => f.via!.joinCollection),
   )
+  // Searchable (large) targets are managed on their own page, not quick-added —
+  // and they aren't replicated, so we couldn't show their existing-row chips.
+  const searchable = searchableTargetCollections(d)
   const targets = new Set<string>()
   for (const f of referenceFields(d)) targets.add(f.references!.collection)
   for (const f of multiReferenceFields(d)) targets.add(f.via!.targetCollection)
   targets.delete(d.collection)
   return [...targets]
-    .filter((c) => !joinCollections.has(c))
+    .filter((c) => !joinCollections.has(c) && !searchable.has(c))
     .map((collection) => {
       const target = getDescriptor(collection)
       // Lowercase collection name — matches the existing "Add company" / "Add tag"

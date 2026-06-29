@@ -19,6 +19,9 @@ export const playlistDescriptor: TableDescriptor = {
       name: 'trackIds',
       label: 'Tracks',
       kind: FieldKind.MultiReference,
+      // Large target (the whole track catalog) → server-side typeahead, not a
+      // replicated checkbox/option list.
+      searchable: true,
       via: {
         joinCollection: 'playlist_track',
         localField: 'playlistId',

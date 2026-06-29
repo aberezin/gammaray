@@ -41,4 +41,34 @@ test.describe('Crate boot smoke', () => {
     await page.getByRole('link', { name: 'Playlists' }).click()
     await expect(page.getByText('Crate Essentials')).toBeVisible({ timeout: 10_000 })
   })
+
+  // The at-scale data layer: the 150-track catalog is NOT replicated to the
+  // client; the playlist Tracks picker (searchable m2m) finds tracks via the
+  // server's searchRows, and the added chip's label resolves via rowsByIds.
+  test('playlist tracks: server-search picker finds + adds a track (at-scale m2m)', async ({ page }) => {
+    await register(page, uniqueEmail('tracksearch'))
+    await page.goto('/playlists')
+    await expect(page.getByRole('heading', { name: 'Playlists' })).toBeVisible({ timeout: 10_000 })
+
+    const plName = `Search PL ${Date.now()}`
+    await page.getByRole('button', { name: 'New playlist' }).click()
+    await page.getByLabel('Name').fill(plName)
+
+    const tracks = page.getByLabel('Tracks', { exact: true })
+    await tracks.click()
+    await tracks.fill('Pt. 1')
+    const option = page.getByRole('option').first()
+    await expect(option).toBeVisible({ timeout: 8_000 })
+    const name = ((await option.textContent()) ?? '').trim()
+    await option.click()
+    await tracks.blur() // close the dropdown so it doesn't overlay Save
+
+    // The added track appears as a chip with its (rowsByIds-resolved) label —
+    // scope to the chip's remove control (the name also appears in other
+    // playlists' track cells in the list).
+    await expect(page.getByRole('button', { name: `Remove ${name}` })).toBeVisible({ timeout: 5_000 })
+    await page.getByRole('button', { name: 'Save' }).click()
+    // The new playlist persisted.
+    await expect(page.getByText(plName)).toBeVisible({ timeout: 8_000 })
+  })
 })
