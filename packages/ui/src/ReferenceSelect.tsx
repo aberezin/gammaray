@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import type { ReferenceOption } from './types'
+import { useDismissable } from './use-dismissable'
 
 interface Props {
   /** Field label — used as the input's accessible name. */
@@ -31,6 +32,7 @@ export function ReferenceSelect({ label, value, loadOptions, labels, onChange, d
 
   const loadRef = useRef(loadOptions)
   loadRef.current = loadOptions
+  const rootRef = useDismissable<HTMLDivElement>(open, () => setOpen(false))
 
   const labelOf = (id: string) => labels[id] ?? learned[id] ?? ''
   const selectedLabel = value ? labelOf(value) : ''
@@ -61,7 +63,7 @@ export function ReferenceSelect({ label, value, loadOptions, labels, onChange, d
   }
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={rootRef} style={{ position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <input
           type="text"

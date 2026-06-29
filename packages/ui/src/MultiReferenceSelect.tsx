@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReferenceOption } from './types'
+import { useDismissable } from './use-dismissable'
 
 interface Props {
   /** Field label — used as the search input's accessible name. */
@@ -29,6 +30,7 @@ export function MultiReferenceSelect({ label, values, loadOptions, labels, onCha
 
   const loadRef = useRef(loadOptions)
   loadRef.current = loadOptions
+  const rootRef = useDismissable<HTMLDivElement>(open, () => setOpen(false))
   const selectedSet = useMemo(() => new Set(values), [values])
 
   const labelOf = (id: string) => labels[id] ?? learned[id] ?? '(unknown)'
@@ -60,7 +62,7 @@ export function MultiReferenceSelect({ label, values, loadOptions, labels, onCha
   const visible = results.filter((o) => !selectedSet.has(o.value))
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div ref={rootRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {values.length > 0 && (
         <div style={chipArea}>
           {values.map((id) => (
