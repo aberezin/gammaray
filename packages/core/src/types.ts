@@ -1,18 +1,11 @@
 import { ConflictStatus } from './enums'
 
-export interface ContactDto {
+/**
+ * A revision of any type-A row, as returned by the generic `rowRevisions` query
+ * (newest first) and rendered in the descriptor-driven history view.
+ */
+export interface RowRevisionDto {
   id: string
-  firstName: string
-  lastName: string
-  email: string
-  phone: string
-  version: number
-  updatedAt: string
-}
-
-export interface ContactRevisionDto {
-  id: string
-  contactId: string
   /** JSON-encoded snapshot of the row's fields at this version. */
   data: string
   version: number
