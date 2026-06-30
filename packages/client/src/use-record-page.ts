@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FieldKind,
   SyncStatus,
-  type ContactRevisionDto,
+  type RowRevisionDto,
   type RowRecord,
   type TableDescriptor,
 } from '@gammaray/core'
@@ -125,7 +125,7 @@ export interface UseRecordPage {
   addRelated: (collection: string, title: string) => Promise<void>
   resolveWith: (row: Record<string, unknown>) => Promise<void>
   dismissConflict: () => void
-  loadRevisions: (rowId: string) => Promise<ContactRevisionDto[]>
+  loadRevisions: (rowId: string) => Promise<RowRevisionDto[]>
 }
 
 const now = () => new Date().toISOString()
@@ -527,9 +527,9 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     primaryReplication.current?.replication.reSync()
   }
 
-  async function loadRevisions(rowId: string): Promise<ContactRevisionDto[]> {
+  async function loadRevisions(rowId: string): Promise<RowRevisionDto[]> {
     if (!descriptor.revisioned) return []
-    const d = await gqlClient.current.request<{ rowRevisions: ContactRevisionDto[] }>(REVISIONS_QUERY, {
+    const d = await gqlClient.current.request<{ rowRevisions: RowRevisionDto[] }>(REVISIONS_QUERY, {
       table: descriptor.table,
       rowId,
     })

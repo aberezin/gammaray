@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { RecordList, RecordForm, RecordConflictBanner, OfflineToggle, SyncIndicator, Pagination, type ReferenceFieldSource } from '@gammaray/ui'
-import { FieldKind, type ContactRevisionDto, type TableDescriptor } from '@gammaray/core'
+import { FieldKind, type RowRevisionDto, type TableDescriptor } from '@gammaray/core'
 import { ResetLocalButton } from './ResetLocalButton'
 import { useRecordPage } from './use-record-page'
 
@@ -40,7 +40,7 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
   const [draft, setDraft] = useState<Record<string, unknown>>({})
   const [editing, setEditing] = useState(false)
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({})
-  const [revisions, setRevisions] = useState<ContactRevisionDto[]>([])
+  const [revisions, setRevisions] = useState<RowRevisionDto[]>([])
   const [addInputs, setAddInputs] = useState<Record<string, string>>({})
 
   const selected = records.find((r) => String(r.id) === selectedId) ?? null
