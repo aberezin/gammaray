@@ -14,9 +14,10 @@ test.describe('Boot smoke', () => {
   test('home page boots, authenticates, and reaches Synced — no error banner, no reload loop', async ({ page }) => {
     await register(page, uniqueEmail('smoke'))
 
-    // Rendered (not a crash page / blank 500).
-    await expect(page.locator('textarea')).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Version history' })).toBeVisible()
+    // Home redirects to the contact list (the note home was retired); rendered
+    // (not a crash page / blank 500).
+    await expect(page).toHaveURL(/\/contacts$/)
+    await expect(page.getByRole('heading', { name: 'Contacts' })).toBeVisible({ timeout: 10_000 })
 
     // Reached a healthy sync state — proves auth + the API round-trip work.
     // (Fails if AUTH_TRUST_HOST is missing: NextAuth errors and sync never syncs.)
@@ -26,12 +27,11 @@ test.describe('Boot smoke', () => {
     await expect(page.getByText('Sync error — local data may be out of date')).toHaveCount(0)
     await expect(page.getByText('Session expired')).toHaveCount(0)
 
-    // Not stuck in a reload loop: state set in the page must survive a few
-    // seconds. A crash-looping dev server (HMR reconnect storm) would wipe this.
-    await page.locator('textarea').fill('smoke-stable-marker')
+    // Not stuck in a reload loop: the page must stay put for a few seconds. A
+    // crash-looping dev server (HMR reconnect storm) would wipe this / bounce the URL.
     await page.waitForTimeout(3_000)
-    await expect(page).toHaveURL('/')
-    await expect(page.locator('textarea')).toHaveValue('smoke-stable-marker')
+    await expect(page).toHaveURL(/\/contacts$/)
+    await expect(page.getByRole('heading', { name: 'Contacts' })).toBeVisible()
   })
 
   test('contacts page (the schema-driven surface) boots and syncs the seed data', async ({ page }) => {

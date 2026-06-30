@@ -4,7 +4,6 @@ import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo'
 import { DatabaseModule } from './database/database.module'
 import { AuthModule } from './auth/auth.module'
 import { UsersModule } from './users/users.module'
-import { NotesModule } from './notes/notes.module'
 import { EngineModule } from './engine/engine.module'
 import { BatchModule } from './batch/batch.module'
 import { SyncModule } from './sync/sync.module'
@@ -48,7 +47,6 @@ import { MetaModule } from './meta/meta.module'
     DatabaseModule,
     AuthModule,
     UsersModule,
-    NotesModule,
     EngineModule,
     BatchModule,
     SyncModule,

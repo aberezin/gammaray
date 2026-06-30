@@ -63,4 +63,59 @@ test.describe('Contacts (type-A update conflict)', () => {
     await ctxB.close()
     await ctxC.close()
   })
+
+  // The other resolution branch (ported from the retired note conflict.spec): the
+  // same conflict, resolved with "Keep theirs" — B adopts the server's value and
+  // discards its own. Exercises the generic banner's onKeepTheirs path.
+  test('concurrent edits conflict and resolve with "keep theirs"', async ({ browser }: { browser: Browser }) => {
+    const stamp = Date.now()
+    const surname = `ConflictKT${stamp}`
+    const aEmail = `a-kt${stamp}@x.example.com`
+    const bEmail = `b-kt${stamp}@x.example.com`
+
+    // A creates the row (v1).
+    const ctxA = await browser.newContext()
+    const a = await ctxA.newPage()
+    await register(a, uniqueEmail('kt-a'))
+    await a.goto('/contacts')
+    await expect(a.getByText('Lovelace')).toBeVisible({ timeout: 10_000 })
+    await a.getByRole('button', { name: 'New contact' }).click()
+    await a.getByLabel('First name').fill('Kit')
+    await a.getByLabel('Last name').fill(surname)
+    await a.getByLabel('Email').fill(`orig${stamp}@x.example.com`)
+    await a.getByRole('button', { name: 'Save' }).click()
+    await expect(a.getByText(surname)).toBeVisible({ timeout: 8_000 })
+
+    // B loads it (v1), selects it, then goes offline so it stays stale.
+    const ctxB = await browser.newContext()
+    const b = await ctxB.newPage()
+    await register(b, uniqueEmail('kt-b'))
+    await b.goto('/contacts')
+    await expect(b.getByText(surname)).toBeVisible({ timeout: 10_000 })
+    await b.getByText(surname).click()
+    await b.getByRole('button', { name: /Online/ }).click() // go offline
+
+    // A edits first → server advances to v2.
+    await a.getByText(surname).click()
+    await a.getByRole('button', { name: 'Edit' }).click()
+    await a.getByLabel('Email').fill(aEmail)
+    await a.getByRole('button', { name: 'Save' }).click()
+    await expect(a.getByText('v2').first()).toBeVisible({ timeout: 8_000 })
+
+    // B edits offline, then reconnects → its stale push conflicts.
+    await b.getByRole('button', { name: 'Edit' }).click()
+    await b.getByLabel('Email').fill(bEmail)
+    await b.getByRole('button', { name: 'Save' }).click()
+    await b.getByRole('button', { name: /Offline/ }).click() // go online
+    await expect(b.getByText('Update conflict')).toBeVisible({ timeout: 10_000 })
+
+    // B keeps THEIRS → banner clears and B adopts A's server value (not its own).
+    await b.getByRole('button', { name: 'Keep theirs' }).click()
+    await expect(b.getByText('Update conflict')).not.toBeVisible({ timeout: 10_000 })
+    await expect(b.getByText(aEmail)).toBeVisible({ timeout: 8_000 })
+    await expect(b.getByText(bEmail)).not.toBeVisible()
+
+    await ctxA.close()
+    await ctxB.close()
+  })
 })

@@ -24,10 +24,13 @@ test.describe('Contacts (type-A read)', () => {
     await expect(page.getByText('v1').first()).toBeVisible({ timeout: 8_000 })
   })
 
-  test('contacts are reachable from the notes page', async ({ page }) => {
+  test('home redirects to the contact list; categories is reachable', async ({ page }) => {
     await register(page, uniqueEmail('contactsnav'))
-    await page.getByRole('link', { name: 'Contacts →' }).click()
+    // The retired note home now redirects '/' to the first descriptor-driven page.
     await expect(page).toHaveURL(/\/contacts$/)
-    await expect(page.getByRole('heading', { name: 'Contacts' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Contacts' })).toBeVisible({ timeout: 10_000 })
+    // Descriptor-driven cross-page nav reaches categories.
+    await page.getByRole('link', { name: 'Categories →' }).click()
+    await expect(page).toHaveURL(/\/categories$/)
   })
 })

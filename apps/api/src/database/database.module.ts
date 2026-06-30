@@ -2,8 +2,6 @@ import { Module, Global } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import {
   UserEntity,
-  NoteEntity,
-  NoteRevisionEntity,
   ContactEntity,
   CompanyEntity,
   CategoryEntity,
@@ -35,8 +33,6 @@ import {
         database: process.env.DATABASE_NAME ?? 'gammaray',
         entities: [
           UserEntity,
-          NoteEntity,
-          NoteRevisionEntity,
           ContactEntity,
           CompanyEntity,
           CategoryEntity,

@@ -1,9 +1,11 @@
 # Entity-Relationship Diagram
 
-The PostgreSQL schema (via TypeORM entities in `packages/database`). Two regions:
-the **note** app (the original single-textarea-per-user feature) and the
-**type-A** tables (the generalized framework — `contacts`, `companies`,
-`categories`, `tags`, `contact_tags`) plus the generic `row_revisions` log.
+The PostgreSQL schema (via TypeORM entities in `packages/database`). The schema is
+the **type-A** tables (the generalized framework — `contacts`, `companies`,
+`categories`, `tags`, `contact_tags`, and the Crate/music tables) plus the generic
+`row_revisions` log and the framework `users`/`app_meta`. (The original single-note
+feature and its `notes`/`note_revisions` tables were retired — migration
+`DropNotes`.)
 
 Every type-A table shares the same spine: a **client-generated `uuid` PK**, an
 `int version` (optimistic concurrency), a `bool deleted` soft-delete tombstone, a
@@ -12,8 +14,6 @@ Every type-A table shares the same spine: a **client-generated `uuid` PK**, an
 
 ```mermaid
 erDiagram
-  users ||--o| notes : "1 note / user (FK, cascade)"
-  notes ||--o{ note_revisions : "history (FK, cascade)"
   companies ||--o{ contacts : "company_id (soft ref)"
   categories ||--o{ categories : "parent_id (deferrable FK, set null)"
   contacts ||--o{ contact_tags : "deferrable FK (cascade)"
@@ -26,22 +26,6 @@ erDiagram
     text password_hash
     timestamp created_at
     timestamp updated_at
-  }
-  notes {
-    uuid id PK
-    uuid user_id FK
-    text content
-    int version
-    jsonb metadata
-  }
-  note_revisions {
-    uuid id PK
-    uuid note_id FK
-    text content
-    int version
-    text client_id
-    enum conflict_status
-    text resolved_content
   }
   contacts {
     uuid id PK
@@ -102,7 +86,6 @@ is deliberate and central to the offline-first design:
 
 | Link | Kind | Why |
 |------|------|-----|
-| `users → notes`, `notes → note_revisions` | **Hard FK** (`ON DELETE CASCADE`) | Server-owned data with normal integrity. |
 | `contacts.company_id → companies` | **Soft reference — no DB FK** | ADR 0005: rows sync offline-first from independent collections; a hard FK would reject a child that reaches the server before its parent. Integrity is advisory; a dangling id renders as `(unknown)`. |
 | `categories.parent_id → categories` | **Deferrable FK** (`SET NULL`, `INITIALLY DEFERRED`) | Self-referential tree; deferring lets a parent + child sync in one batch in any order (ADR 0006). |
 | `contact_tags.contact_id/tag_id → contacts/tags` | **Deferrable FKs** (`CASCADE`) | The M:N join row has two parents; deferred constraints + DB∪batch validation let the whole graph commit atomically (ADR 0007). A partial unique index `(contact_id, tag_id) WHERE deleted = false` keeps one active link. |
@@ -114,7 +97,6 @@ is deliberate and central to the offline-first design:
   every accepted write and detects conflicts on a mismatch.
 - **`deleted`** is a tombstone (not a row removal) so deletions replicate.
 - **`row_revisions`** is the field-aware history + the 3-way-merge common
-  ancestor for `revisioned` tables (ADR 0010). `note_revisions` is the note app's
-  own (pre-generalization) equivalent.
-- **`conflict_status`** (`none` / `detected` / `resolved`) is a shared enum across
-  `note_revisions` and `row_revisions`.
+  ancestor for `revisioned` tables (ADR 0010).
+- **`conflict_status`** (`none` / `detected` / `resolved`) is the
+  `row_revisions_conflict_status_enum` on `row_revisions`.

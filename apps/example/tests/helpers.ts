@@ -7,13 +7,16 @@ export function uniqueEmail(label = 'user') {
 
 export const DEFAULT_PASSWORD = 'password123'
 
+// Auth lands on the app home, which redirects to the first descriptor-driven page
+// (/contacts). Wait for "off the login page" rather than a fixed path so the
+// helper doesn't care where home points.
 export async function register(page: Page, email: string, password = DEFAULT_PASSWORD) {
   await page.goto('/login')
   await page.getByRole('button', { name: 'register' }).click()
   await page.fill('input[type="email"]', email)
   await page.fill('input[type="password"]', password)
   await page.getByRole('button', { name: 'Create account' }).click()
-  await page.waitForURL('/')
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
 }
 
 export async function login(page: Page, email: string, password = DEFAULT_PASSWORD) {
@@ -22,7 +25,7 @@ export async function login(page: Page, email: string, password = DEFAULT_PASSWO
   await page.fill('input[type="email"]', email)
   await page.fill('input[type="password"]', password)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.waitForURL('/')
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
 }
 
 /** Wait until the sync indicator shows "Synced" */
