@@ -2,7 +2,7 @@ import { FieldKind, MergeStrategyKind, TableDescriptor } from '@gammaray/core'
 
 // Album — a core entity. Many-to-one to a record label, many-to-many to genres
 // (via album_genre). Revisioned (history + disjoint-field auto-merge), like
-// notesync's contact.
+// rolodex's contact.
 export const albumDescriptor: TableDescriptor = {
   table: 'album',
   collection: 'album',

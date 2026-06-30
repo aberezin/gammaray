@@ -1,4 +1,4 @@
-// Framework UI only — reusable across any type-A app. The NoteSync example's
+// Framework UI only — reusable across any type-A app. The Rolodex example's
 // note-specific components (NoteEditor / RevisionList / ConflictBanner) live in
 // the example app (apps/example/src/components), not here.
 export { OfflineToggle } from './OfflineToggle'

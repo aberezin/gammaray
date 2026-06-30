@@ -6,7 +6,7 @@ import { musicSeed } from './seed-data.music'
 // applies only the fixtures for the schemas this api instance serves
 // (GAMMARAY_SCHEMAS), so a per-app backend (Phase 2) seeds only its own tables.
 const SCHEMA_SEEDS: Record<string, SeedRow[]> = {
-  notesync: coreSeed,
+  rolodex: coreSeed,
   music: musicSeed,
 }
 

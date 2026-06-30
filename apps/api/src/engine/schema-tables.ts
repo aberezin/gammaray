@@ -6,7 +6,7 @@ import {
   categoryDescriptor,
   tagDescriptor,
   contactTagDescriptor,
-} from '@gammaray/notesync-schema'
+} from '@gammaray/rolodex-schema'
 import {
   labelDescriptor,
   artistDescriptor,
@@ -45,7 +45,7 @@ export interface TableDef {
 // The type-A tables of each example app, grouped by schema. Adding a table = one
 // entry in its schema's list (+ descriptor + entity + migration).
 export const SCHEMA_TABLES: Record<string, TableDef[]> = {
-  notesync: [
+  rolodex: [
     { descriptor: companyDescriptor, entity: CompanyEntity },
     { descriptor: categoryDescriptor, entity: CategoryEntity },
     { descriptor: tagDescriptor, entity: TagEntity },
@@ -71,7 +71,7 @@ export const SCHEMA_TABLES: Record<string, TableDef[]> = {
 // logical database on the shared server — a config change, not a rewrite. Shared
 // by table registration (here) and seeding (schema-seeds.ts).
 export function enabledSchemaNames(): string[] {
-  return (process.env.GAMMARAY_SCHEMAS ?? 'notesync,music')
+  return (process.env.GAMMARAY_SCHEMAS ?? 'rolodex,music')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)

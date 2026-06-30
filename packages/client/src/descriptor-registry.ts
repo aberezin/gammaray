@@ -2,8 +2,8 @@ import { FieldKind, type FieldDescriptor, type TableDescriptor } from '@gammaray
 import { clientConfig } from './config'
 
 // The client-side descriptor registry — the analog of the server's RowRegistry.
-// The descriptor set is supplied per app via configureClient() (notesync's
-// `notesyncDescriptors`, music's `musicDescriptors`, …), so this package is
+// The descriptor set is supplied per app via configureClient() (rolodex's
+// `rolodexDescriptors`, music's `musicDescriptors`, …), so this package is
 // app-agnostic: it drives the RxDB collections, the generic RecordPage, and all
 // descriptor-derived wiring from whatever descriptors the app registered.
 

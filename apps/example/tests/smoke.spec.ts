@@ -39,7 +39,7 @@ test.describe('Boot smoke', () => {
     await page.goto('/contacts')
 
     // The seeded baseline (ADR 0011) pulls down — proves the generic row
-    // engine + @gammaray/notesync-schema descriptors render end to end.
+    // engine + @gammaray/rolodex-schema descriptors render end to end.
     await expect(page.getByText('Lovelace')).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText('● Synced')).toBeVisible()
     await expect(page.getByText('Sync error — local data may be out of date')).toHaveCount(0)

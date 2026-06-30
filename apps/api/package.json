@@ -15,7 +15,7 @@
     "@apollo/server": "^4.11.0",
     "@gammaray/auth": "workspace:*",
     "@gammaray/core": "workspace:*",
-    "@gammaray/notesync-schema": "workspace:*",
+    "@gammaray/rolodex-schema": "workspace:*",
     "@gammaray/music-schema": "workspace:*",
     "@gammaray/database": "workspace:*",
     "@nestjs/apollo": "^12.2.0",

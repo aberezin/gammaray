@@ -1,5 +1,5 @@
 {
-  "name": "@gammaray/notesync-schema",
+  "name": "@gammaray/rolodex-schema",
   "version": "0.0.1",
   "private": true,
   "main": "./dist/index.js",
