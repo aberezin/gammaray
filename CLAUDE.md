@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-GammaRay is a POC whose goal is to develop a reliable tech stack that can be coded by agents (the engineering team is Alan Berezin plus various agents). The example app, **NoteSync** (`apps/example`), is a small contact CRM (contacts, companies, categories, tags) built entirely on the generic, descriptor-driven type-A engine — it exercises offline-first sync, references, many-to-many, and conflict resolution. A second example, **Crate** (`apps/music`, a music library), reuses the same engine to prove the framework is app-agnostic. (A hand-built single-textarea "note" feature was the original first app; it predated the generic engine and was retired once the engine could express everything generically — see ADR-era history and migration `DropNotes`.)
+GammaRay is a POC whose goal is to develop a reliable tech stack that can be coded by agents (the engineering team is Alan Berezin plus various agents). The example app, **Rolodex** (`apps/example`), is a small contact CRM (contacts, companies, categories, tags) built entirely on the generic, descriptor-driven type-A engine — it exercises offline-first sync, references, many-to-many, and conflict resolution. A second example, **Crate** (`apps/music`, a music library), reuses the same engine to prove the framework is app-agnostic. (A hand-built single-textarea "note" feature was the original first app; it predated the generic engine and was retired once the engine could express everything generically — see ADR-era history and migration `DropNotes`.)
 
 ## Local machine
 
@@ -56,7 +56,7 @@ docker compose up -d
 k6 run load-tests/k6/single-socket.js    # baseline; see load-tests/README.md
 ```
 
-Build order matters: `packages/core` → `packages/notesync-schema` → `packages/database` → `apps/api`. (`@gammaray/core` is the framework — the descriptor *system* + generic merge/sync logic; `@gammaray/notesync-schema` holds the example app's concrete `TableDescriptor`s built on it.) The `packages/ui` has no separate build step — Next.js transpiles it directly.
+Build order matters: `packages/core` → `packages/rolodex-schema` → `packages/database` → `apps/api`. (`@gammaray/core` is the framework — the descriptor *system* + generic merge/sync logic; `@gammaray/rolodex-schema` holds the example app's concrete `TableDescriptor`s built on it.) The `packages/ui` has no separate build step — Next.js transpiles it directly.
 
 ## Architecture
 
@@ -66,7 +66,7 @@ Build order matters: `packages/core` → `packages/notesync-schema` → `package
 apps/api          NestJS backend — GraphQL + REST auth endpoints
 apps/example      Next.js 15 frontend (App Router)
 packages/core     Framework: the descriptor system (FieldKind, TableDescriptor, MergeStrategyKind), shared DTOs/enums (SyncStatus, ConflictStatus), generic merge + dependency-order logic
-packages/notesync-schema  The NoteSync example app's data model: the concrete TableDescriptors (contact, company, category, tag) built on @gammaray/core. Swap this to drive a different app.
+packages/rolodex-schema  The Rolodex example app's data model: the concrete TableDescriptors (contact, company, category, tag) built on @gammaray/core. Swap this to drive a different app.
 packages/auth     JwtPayload interface shared between api and the example app
 packages/database TypeORM entities, migrations, and data source config
 packages/ui       Framework React components (RecordForm, RecordList, RecordConflictBanner, Pagination, OfflineToggle, SyncIndicator) — all descriptor-driven

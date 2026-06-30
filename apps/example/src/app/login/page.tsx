@@ -40,7 +40,7 @@ export default function LoginPage() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <form onSubmit={handleSubmit} style={{ width: 320, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 24, textAlign: 'center' }}>NoteSync</h1>
+        <h1 style={{ margin: 0, fontSize: 24, textAlign: 'center' }}>Rolodex</h1>
         <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #d1d5db' }}>
           {(['login', 'register'] as const).map((m) => (
             <button

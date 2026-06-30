@@ -1,6 +1,6 @@
 // The "Crate" music-library example app's data model: the TableDescriptors for
 // its type-A tables, built on the @gammaray/core framework. A second example
-// (alongside @gammaray/notesync-schema) that proves the framework is driven
+// (alongside @gammaray/rolodex-schema) that proves the framework is driven
 // entirely by swapping the descriptor set — see docs/example-app-spec.md.
 export * from './descriptors.label'
 export * from './descriptors.artist'

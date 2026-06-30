@@ -10,8 +10,8 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // The database holds the app's type-A collections (all `RowRecord`) plus any
-// extra collections the app declared (e.g. notesync's `note`). It's keyed by
-// name; typed access goes through the helpers below.
+// extra (non-type-A) collections the app declared via configureClient. It's keyed
+// by name; typed access goes through the helpers below.
 export type ClientDatabase = RxDatabase<Record<string, RxCollection>>
 
 // Access a type-A collection by name (descriptor-driven code holds the

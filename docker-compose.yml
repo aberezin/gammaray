@@ -30,7 +30,7 @@ services:
       DATABASE_PASSWORD: gammaray
       DATABASE_NAME: gammaray
       # CORS allowed origins for the shared API: both example frontends'
-      # published host URLs (notesync :3000, music :3010). Keys off the same PORT
+      # published host URLs (rolodex :3000, music :3010). Keys off the same PORT
       # vars they publish on, so parallel instances allow their own origins
       # (see apps/api/src/main.ts).
       NEXTAUTH_URL: http://localhost:${PORT:-3000}
@@ -71,7 +71,7 @@ services:
       - ./packages:/app/packages
 
   # The second example app ("Crate" music library) — same shared API + Postgres
-  # (Phase 1). Served on :3010 so it runs alongside the notesync frontend (:3000).
+  # (Phase 1). Served on :3010 so it runs alongside the rolodex frontend (:3000).
   music:
     build:
       context: .

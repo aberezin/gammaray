@@ -2,7 +2,7 @@ import { createHash } from 'crypto'
 import type { SeedRow } from './seed-data'
 
 // The music ("Crate") seed fixture. Generated deterministically so it's
-// idempotent (create-if-absent by stable id) like the notesync seed. Sized to
+// idempotent (create-if-absent by stable id) like the rolodex seed. Sized to
 // feel like a real catalog AND to make the at-scale relationship controls strain
 // — one ~80-track playlist over a 150-track catalog (docs/example-app-spec §6/§8).
 

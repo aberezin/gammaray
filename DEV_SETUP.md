@@ -1,6 +1,6 @@
 # Development Setup & Testing Guide
 
-This guide explains how to run the NoteSync app and test it in Chrome.
+This guide explains how to run the Rolodex app and test it in Chrome.
 
 ## Quick Start
 
@@ -114,7 +114,7 @@ docker compose up -d
 ### 2. Test in Chrome
 - Open http://localhost:3000
 - Sign up or log in
-- Full NoteSync functionality works (auth, sync, conflicts, offline mode)
+- Full Rolodex functionality works (auth, sync, conflicts, offline mode)
 
 ### 3. Run the e2e suite
 ```bash

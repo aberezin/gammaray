@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { categoryDescriptor } from '@gammaray/notesync-schema'
+import { categoryDescriptor } from '@gammaray/rolodex-schema'
 import { RecordPage } from '@/lib/app-client'
 
 // A self-referential tree (a category's Parent is another category) — handled by
