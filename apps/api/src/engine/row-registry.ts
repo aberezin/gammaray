@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { EntityManager, ObjectLiteral, EntityTarget } from 'typeorm'
-import { dependencyOrder, type TableDescriptor } from '@gammaray/core'
+import { assertValidDescriptors, dependencyOrder, type TableDescriptor } from '@gammaray/core'
 import type { ApplyOutcome, RowChangeInput } from '../batch/batch.types'
 import { GenericRowService } from './generic-row.service'
 import { enabledSchemaTables } from './schema-tables'
@@ -32,8 +32,13 @@ export class RowRegistry {
       existing: (m, ids) => this.generic.existingIds(m, entity, ids),
     })
 
+    const enabled = enabledSchemaTables()
+    // Fail fast at startup on a malformed descriptor set (bad reference target,
+    // join field typo, missing titleField). Same check the schema packages run.
+    assertValidDescriptors(enabled.map((t) => t.descriptor))
+
     this.tables = Object.fromEntries(
-      enabledSchemaTables().map(({ descriptor, entity }) => [descriptor.table, reg(descriptor, entity)]),
+      enabled.map(({ descriptor, entity }) => [descriptor.table, reg(descriptor, entity)]),
     )
 
     this.order = dependencyOrder(Object.values(this.tables).map((t) => t.descriptor))
