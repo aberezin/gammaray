@@ -1,12 +1,11 @@
 import { auth } from '@/auth'
 import { redirect } from 'next/navigation'
-import { NotePageClient } from '@/components/NotePageClient'
 
-export default async function NotePage() {
+// The example app's home. The original single-note feature was retired (it
+// predated the generic type-A engine); the app now opens on the contact list,
+// the first descriptor-driven page.
+export default async function HomePage() {
   const session = await auth()
-  // The (app) layout also guards, but layouts and pages render in parallel in the
-  // App Router, so this page can evaluate before the layout's redirect takes effect.
-  // Guard here too to avoid dereferencing a null session.
   if (!session) redirect('/login')
-  return <NotePageClient accessToken={session.accessToken} />
+  redirect('/contacts')
 }

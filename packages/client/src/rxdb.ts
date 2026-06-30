@@ -21,8 +21,9 @@ export function rowCollection(db: ClientDatabase, collection: string): RxCollect
   return (db.collections as unknown as Record<string, RxCollection<RowRecord>>)[collection]
 }
 
-// Access a non-type-A (extra) collection with its own document type, e.g.
-// getCollection<NoteRxDocument>(db, 'note').
+// Access a non-type-A (extra) collection with its own document type — the
+// configureClient({ extraCollections }) escape hatch for app-specific stores that
+// aren't descriptor-driven type-A tables.
 export function getCollection<T>(db: ClientDatabase, name: string): RxCollection<T> {
   return (db.collections as unknown as Record<string, RxCollection<T>>)[name]
 }

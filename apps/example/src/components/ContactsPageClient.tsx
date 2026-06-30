@@ -15,10 +15,7 @@ export function ContactsPageClient({ accessToken }: { accessToken: string }) {
       accessToken={accessToken}
       title="Contacts"
       navLinks={
-        <>
-          <Link href="/categories" style={{ fontSize: 13, color: '#3b82f6' }}>Categories →</Link>
-          <Link href="/" style={{ fontSize: 13, color: '#3b82f6' }}>← Notes</Link>
-        </>
+        <Link href="/categories" style={{ fontSize: 13, color: '#3b82f6' }}>Categories →</Link>
       }
     />
   )

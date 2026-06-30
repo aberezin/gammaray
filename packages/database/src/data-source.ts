@@ -1,8 +1,6 @@
 import 'reflect-metadata'
 import { DataSource, DataSourceOptions } from 'typeorm'
 import { UserEntity } from './entities/user.entity'
-import { NoteEntity } from './entities/note.entity'
-import { NoteRevisionEntity } from './entities/note-revision.entity'
 import { ContactEntity } from './entities/contact.entity'
 import { RowRevisionEntity } from './entities/row-revision.entity'
 import { CompanyEntity } from './entities/company.entity'
@@ -30,8 +28,6 @@ export function createDataSource(overrides: Partial<DataSourceOptions> = {}): Da
     database: process.env.DATABASE_NAME ?? 'gammaray',
     entities: [
       UserEntity,
-      NoteEntity,
-      NoteRevisionEntity,
       ContactEntity,
       CompanyEntity,
       CategoryEntity,

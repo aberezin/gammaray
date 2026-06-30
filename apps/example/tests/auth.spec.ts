@@ -7,14 +7,15 @@ test.describe('Authentication', () => {
     await expect(page).toHaveURL(/\/login/)
   })
 
-  test('register creates account and lands on note page', async ({ page }) => {
+  test('register creates account and lands on the app', async ({ page }) => {
     const email = uniqueEmail('reg')
     await register(page, email)
-    await expect(page).toHaveURL('/')
-    await expect(page.getByRole('heading', { name: 'NoteSync' })).toBeVisible()
+    // Home redirects to the first descriptor-driven page (the note home was retired).
+    await expect(page).toHaveURL(/\/contacts$/)
+    await expect(page.getByRole('heading', { name: 'Contacts' })).toBeVisible({ timeout: 10_000 })
   })
 
-  test('login with valid credentials lands on note page', async ({ page }) => {
+  test('login with valid credentials lands on the app', async ({ page }) => {
     const email = uniqueEmail('login')
     // Register first, then log out and log back in
     await register(page, email)
@@ -22,7 +23,7 @@ test.describe('Authentication', () => {
     await expect(page).toHaveURL(/\/login/)
 
     await login(page, email)
-    await expect(page).toHaveURL('/')
+    await expect(page).toHaveURL(/\/contacts$/)
   })
 
   test('login with wrong password shows error', async ({ page }) => {

@@ -4,9 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  OneToOne,
 } from 'typeorm'
-import { NoteEntity } from './note.entity'
 
 @Entity('users')
 export class UserEntity {
@@ -24,7 +22,4 @@ export class UserEntity {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date
-
-  @OneToOne(() => NoteEntity, (note) => note.user)
-  note?: NoteEntity
 }

@@ -205,6 +205,6 @@ docker compose stop
 - **RxDB** (IndexedDB in browser) syncs with the API via GraphQL mutations
 - **Offline-first**: Changes are applied locally first, then synced to the server
 - **Conflict resolution**: If two clients edit simultaneously, conflicts are detected and the user can merge
-- **WebSocket subscriptions**: Real-time updates when other clients modify notes
+- **WebSocket subscriptions**: Real-time updates when other clients modify records
 
 See `CLAUDE.md` for more architecture details.
