@@ -1,24 +1,6 @@
 import { Module, Global } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
-import {
-  UserEntity,
-  ContactEntity,
-  CompanyEntity,
-  CategoryEntity,
-  TagEntity,
-  ContactTagEntity,
-  RowRevisionEntity,
-  AppMetaEntity,
-  LabelEntity,
-  ArtistEntity,
-  GenreEntity,
-  AlbumEntity,
-  TrackEntity,
-  PlaylistEntity,
-  AlbumGenreEntity,
-  TrackArtistEntity,
-  PlaylistTrackEntity,
-} from '@gammaray/database'
+import { ALL_ENTITIES } from '@gammaray/database'
 
 @Global()
 @Module({
@@ -31,25 +13,9 @@ import {
         username: process.env.DATABASE_USER ?? 'gammaray',
         password: process.env.DATABASE_PASSWORD ?? 'gammaray',
         database: process.env.DATABASE_NAME ?? 'gammaray',
-        entities: [
-          UserEntity,
-          ContactEntity,
-          CompanyEntity,
-          CategoryEntity,
-          TagEntity,
-          ContactTagEntity,
-          RowRevisionEntity,
-          AppMetaEntity,
-          LabelEntity,
-          ArtistEntity,
-          GenreEntity,
-          AlbumEntity,
-          TrackEntity,
-          PlaylistEntity,
-          AlbumGenreEntity,
-          TrackArtistEntity,
-          PlaylistTrackEntity,
-        ],
+        // One canonical entity list, shared with the migration data source — no
+        // more keeping two registrations in sync (the old EntityMetadataNotFound footgun).
+        entities: ALL_ENTITIES,
         migrations: [],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
