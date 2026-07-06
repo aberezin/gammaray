@@ -1,6 +1,19 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+
+// randomUUID() requires a secure context (HTTPS or localhost).
+// Fall back to getRandomValues() so the app works over plain HTTP on a VM IP.
+function randomUUID(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const b = new Uint8Array(16)
+  crypto.getRandomValues(b)
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  return [...b].map((v, i) =>
+    ([4, 6, 8, 10].includes(i) ? '-' : '') + v.toString(16).padStart(2, '0')
+  ).join('')
+}
 import {
   FieldKind,
   SyncStatus,
@@ -189,7 +202,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
   const pageAfters = useRef<(string | null)[]>([null])
 
   const gqlClient = useRef(makeGqlClient())
-  const clientId = useRef<string>(crypto.randomUUID())
+  const clientId = useRef<string>(randomUUID())
   const primaryReplication = useRef<ReturnType<typeof startRowReplication> | null>(null)
   const resolvedRef = useRef(resolvedLabels)
   resolvedRef.current = resolvedLabels
@@ -442,7 +455,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
       const currentIds = currentDocs.map((d) => String(d.get(via.remoteField)))
       for (const targetId of desired.filter((t) => !currentIds.includes(t))) {
         await joinCol.insert({
-          id: crypto.randomUUID(),
+          id: randomUUID(),
           [via.localField]: rowId,
           [via.remoteField]: targetId,
           version: 0,
@@ -459,7 +472,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
 
   async function create(draft: Record<string, unknown>): Promise<string> {
     const db = await getDatabase()
-    const id = crypto.randomUUID()
+    const id = randomUUID()
     const writable = coerceWritable(descriptor, draft)
     await rowCollection(db, descriptor.collection).insert({ ...writable, id, version: 0, updatedAt: now(), _deleted: false })
     await reconcileMultiRefs(id, draft)
@@ -502,7 +515,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     const db = await getDatabase()
     await rowCollection(db, collection).insert({
       ...coerceWritable(target, { [titleFieldOf(target)]: name }),
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       version: 0,
       updatedAt: now(),
       _deleted: false,

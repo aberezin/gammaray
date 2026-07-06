@@ -13,6 +13,10 @@ COPY apps/music ./apps/music
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
+# Build schema packages that are not in transpilePackages (Next.js needs their dist/)
+RUN pnpm --filter @gammaray/core build && \
+    pnpm --filter @gammaray/music-schema build
+
 # Expose port 3010
 EXPOSE 3010
 

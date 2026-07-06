@@ -1,0 +1,18 @@
+# Claudebox override: remove host bind-mounts (path not visible to Colima VM).
+# The Dockerfiles COPY all source in, so the images are self-contained.
+# Use !reset to fully replace (not merge) the volumes list from the base file.
+services:
+  api:
+    volumes: !reset []
+    environment:
+      # Allow both localhost ports (host port-forward) and the Colima VM IP
+      # so the browser at http://192.168.64.13:30xx can make same-origin API calls.
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3010,http://192.168.64.13:3000,http://192.168.64.13:3010"
+  frontend:
+    volumes: !reset []
+    environment:
+      AUTH_SECRET: "claudebox-dev-secret-32-chars-ok!"
+  music:
+    volumes: !reset []
+    environment:
+      AUTH_SECRET: "claudebox-dev-secret-32-chars-ok!"

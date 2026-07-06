@@ -3,6 +3,8 @@ import path from 'path'
 
 const config: NextConfig = {
   transpilePackages: ['@gammaray/core', '@gammaray/auth', '@gammaray/ui', '@gammaray/client'],
+  // Allow the Colima VM IP so Next.js dev mode streams RSC flight data to it.
+  allowedDevOrigins: ['192.168.64.13'],
   // Silence the per-request "GET / 307" dev-server logs; real errors still print.
   logging: {
     incomingRequests: false,

@@ -139,6 +139,11 @@ Open http://localhost:3000 in Chrome. Colima forwards both published ports to th
 - `apps/api/Dockerfile` — NestJS on :3001, runs migrations on startup
 - `apps/example/Dockerfile` — Next.js on :3000 (binds `0.0.0.0` so the container is reachable)
 
+**Accessing from the Colima VM IP (e.g. `192.168.64.13:3010`) — three extra gotchas:**
+1. **CORS** — The API's `CORS_ORIGINS` env var must include the VM IP. Set in `docker-compose.override.yml`.
+2. **Next.js `allowedDevOrigins`** — In dev mode, Next.js 15 blocks RSC flight data from non-localhost hosts. Without `allowedDevOrigins: ['192.168.64.13']` in `next.config.ts`, React never hydrates (the page shows SSR HTML only; no RxDB, no sync).
+3. **`crypto.randomUUID` insecure context** — `randomUUID()` requires HTTPS or localhost. Accessing via a plain `http://` VM IP breaks it. The `use-record-page.ts` helper falls back to `crypto.getRandomValues()` for these contexts.
+
 ## SDLC
 
 ### Branching

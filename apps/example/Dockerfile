@@ -13,6 +13,10 @@ COPY apps/example ./apps/example
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
+# Build schema packages that are not in transpilePackages (Next.js needs their dist/)
+RUN pnpm --filter @gammaray/core build && \
+    pnpm --filter @gammaray/rolodex-schema build
+
 # Expose port 3000
 EXPOSE 3000
 
