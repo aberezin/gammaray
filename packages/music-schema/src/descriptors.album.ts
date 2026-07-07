@@ -45,6 +45,7 @@ export const albumGenreDescriptor: TableDescriptor = {
   listField: 'albumGenres',
   identity: { field: 'id', clientGenerated: true },
   mergeStrategy: MergeStrategyKind.WholeRow,
+  temporalValidity: true,
   display: { titleFields: ['id'] },
   fields: [
     { name: 'id', label: 'ID', kind: FieldKind.Uuid, readOnly: true },
@@ -62,5 +63,7 @@ export const albumGenreDescriptor: TableDescriptor = {
     },
     { name: 'version', label: 'Version', kind: FieldKind.Int, readOnly: true },
     { name: 'updatedAt', label: 'Updated', kind: FieldKind.Timestamp, readOnly: true },
+    { name: 'effectiveFrom', label: 'Active From', kind: FieldKind.Timestamp, readOnly: true },
+    { name: 'effectiveTo', label: 'Active To', kind: FieldKind.Timestamp, readOnly: true, nullable: true },
   ],
 }

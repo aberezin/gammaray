@@ -30,6 +30,12 @@ export class ContactTagEntity {
   @Column({ type: 'jsonb', default: '{}' })
   metadata!: Record<string, unknown>
 
+  @Column({ name: 'effective_from', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
+  effectiveFrom!: Date
+
+  @Column({ name: 'effective_to', type: 'timestamptz', nullable: true, default: null })
+  effectiveTo!: Date | null
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date
 

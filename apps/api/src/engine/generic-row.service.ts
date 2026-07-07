@@ -172,15 +172,22 @@ export class GenericRowService {
         return { status: 'CONFLICT', serverVersion: existing.version, row: existing }
       }
       const version = existing.version + 1
-      await repo.update(change.id, { deleted: true, version })
-      const deleted = { ...existing, deleted: true, version }
+      const deleteUpdate: Record<string, unknown> = { deleted: true, version }
+      if (descriptor.temporalValidity) deleteUpdate.effectiveTo = new Date()
+      await repo.update(change.id, deleteUpdate)
+      const deleted = { ...existing, ...deleteUpdate }
       await saveRev(deleted, ConflictStatus.None)
       return { status: 'APPLIED', row: deleted, emit: deleted }
     }
 
     // UPSERT — create
     if (!existing) {
-      const created = await repo.save(repo.create({ [idField]: change.id, ...ours, version: 1 }))
+      const newData: Record<string, unknown> = { [idField]: change.id, ...ours, version: 1 }
+      if (descriptor.temporalValidity) {
+        newData.effectiveFrom = new Date()
+        newData.effectiveTo = null
+      }
+      const created = await repo.save(repo.create(newData))
       await saveRev(created as Record<string, unknown>, ConflictStatus.None)
       return { status: 'APPLIED', row: created, emit: created }
     }

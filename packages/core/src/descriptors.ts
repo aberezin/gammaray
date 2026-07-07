@@ -45,6 +45,8 @@ export interface FieldDescriptor {
   /** Not user-editable (id, version, timestamps). */
   readOnly?: boolean
   required?: boolean
+  /** Whether the field can be null (e.g. effectiveTo on join tables). */
+  nullable?: boolean
   /**
    * For Reference/MultiReference fields whose target is LARGE: opt into at-scale
    * handling. The client fetches picker options via server-side `searchRows`
@@ -91,6 +93,13 @@ export interface TableDescriptor {
    * (a version mismatch is simply a conflict — no ancestor needed). Default false.
    */
   revisioned?: boolean
+  /**
+   * Join tables that record the full lifetime of each link. When true, `applyRow`
+   * stamps `effectiveFrom` on create and `effectiveTo` on soft-delete so the
+   * "when was this link active" history is queryable without touching the parent
+   * row's version or revision log. Default false.
+   */
+  temporalValidity?: boolean
   /**
    * At-scale opt-in (ADR 0013). When true, this table is NOT full-replicated into
    * the client's local store; its list is fetched one page at a time from the

@@ -21,6 +21,9 @@ export function rxSchemaFromDescriptor(d: TableDescriptor): RxJsonSchema<RowReco
         // A soft FK: the referenced id, or null when unset.
         properties[f.name] = { type: ['string', 'null'] }
         break
+      case FieldKind.Timestamp:
+        properties[f.name] = f.nullable ? { type: ['string', 'null'] } : { type: 'string' }
+        break
       default:
         properties[f.name] = { type: 'string' }
     }
