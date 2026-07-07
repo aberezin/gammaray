@@ -8,32 +8,44 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const router = useRouter()
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-
-    if (mode === 'register') {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
-      const res = await fetch(`${apiUrl}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-      if (!res.ok) {
-        const body = await res.json() as { message?: string }
-        setError(body.message ?? 'Registration failed')
-        return
+    setSubmitting(true)
+    try {
+      if (mode === 'register') {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+        let res: Response
+        try {
+          res = await fetch(`${apiUrl}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          })
+        } catch {
+          // fetch rejects on network/CORS/DNS failure — otherwise silent
+          setError(`Could not reach the API at ${apiUrl}. Check your connection.`)
+          return
+        }
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({} as { message?: string }))
+          setError(body.message ?? `Registration failed (HTTP ${res.status})`)
+          return
+        }
       }
-    }
 
-    const result = await signIn('credentials', { email, password, redirect: false })
-    if (result?.error) {
-      setError('Invalid email or password')
-    } else {
-      router.push('/')
+      const result = await signIn('credentials', { email, password, redirect: false })
+      if (result?.error) {
+        setError(mode === 'register' ? 'Registered, but sign-in failed. Try logging in.' : 'Invalid email or password')
+      } else {
+        router.push('/')
+      }
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -80,8 +92,22 @@ export default function LoginPage() {
           style={inputStyle}
         />
         {error && <p style={{ color: '#ef4444', margin: 0, fontSize: 13 }}>{error}</p>}
-        <button type="submit" style={{ padding: 10, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>
-          {mode === 'login' ? 'Sign in' : 'Create account'}
+        <button
+          type="submit"
+          disabled={submitting}
+          style={{
+            padding: 10,
+            background: submitting ? '#93c5fd' : '#3b82f6',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            cursor: submitting ? 'wait' : 'pointer',
+            fontWeight: 600,
+          }}
+        >
+          {submitting
+            ? mode === 'login' ? 'Signing in…' : 'Creating account…'
+            : mode === 'login' ? 'Sign in' : 'Create account'}
         </button>
       </form>
     </div>
