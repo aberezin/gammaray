@@ -111,6 +111,11 @@ export interface QuickAddTarget {
 export interface UseRecordPage {
   /** Primary rows with virtual MultiReference fields materialized onto them. */
   records: RowRecord[]
+  /** Raw join-collection rows keyed by join collection name (active links only —
+   *  RxDB excludes soft-deleted docs from live queries). Each row carries the
+   *  temporal fields `effectiveFrom`/`effectiveTo` when the join table has
+   *  `temporalValidity: true`. Used by the link-history panel. */
+  joinRows: Record<string, RowRecord[]>
   /** id→label maps per field, for the list + the form's current selections.
    *  Non-searchable targets come from the replicated rows; searchable ones are
    *  resolved on demand via `rowsByIds`. */
@@ -573,9 +578,18 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
       }
     : null
 
+  const joinRows = useMemo(
+    () =>
+      Object.fromEntries(
+        multiReferenceFields(descriptor).map((f) => [f.via!.joinCollection, data[f.via!.joinCollection] ?? []]),
+      ),
+    [data, descriptor],
+  )
+
   return {
     records,
     referenceLabels,
+    joinRows,
     searchReference,
     quickAddTargets,
     paged,

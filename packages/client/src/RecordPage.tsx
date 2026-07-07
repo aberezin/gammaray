@@ -24,7 +24,7 @@ interface Props {
 // wrapper: <RecordPage descriptor={fooDescriptor} title="Foos" />.
 export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth = 1000 }: Props) {
   const page = useRecordPage(descriptor, accessToken)
-  const { records, referenceLabels, quickAddTargets, suspect, pagination } = page
+  const { records, referenceLabels, joinRows, quickAddTargets, suspect, pagination } = page
 
   // Debounced search box for a paged table (drives the server-side `filter`).
   const [search, setSearch] = useState('')
@@ -283,6 +283,101 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
                   )}
                 </>
               )}
+
+              {/* Link history — present on any descriptor with MultiReference fields */}
+              {selectedId && (() => {
+                const mrefFields = descriptor.fields.filter(
+                  (f) => f.kind === FieldKind.MultiReference && f.via,
+                )
+                if (mrefFields.length === 0) return null
+
+                const sections = mrefFields.map((f) => {
+                  const via = f.via!
+                  const rows = (joinRows[via.joinCollection] ?? [])
+                    .filter((r) => String(r[via.localField]) === selectedId)
+                    .slice()
+                    .sort((a, b) =>
+                      String(a.effectiveFrom ?? '').localeCompare(String(b.effectiveFrom ?? '')),
+                    )
+                  return { field: f, via, rows }
+                })
+
+                const allRows = sections.flatMap((s) => s.rows)
+                const lastActivity = allRows.reduce<Date | null>((latest, r) => {
+                  const d = r.effectiveFrom ? new Date(String(r.effectiveFrom)) : null
+                  return d && (!latest || d > latest) ? d : latest
+                }, null)
+
+                return (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '20px 0 12px' }}>
+                      <h2 style={{ margin: 0, fontSize: 15, color: '#374151' }}>Link history</h2>
+                      {lastActivity && (
+                        <span style={{ fontSize: 12, color: '#9ca3af' }}>
+                          last change {relativeTime(lastActivity)}
+                        </span>
+                      )}
+                    </div>
+                    {sections.every((s) => s.rows.length === 0) ? (
+                      <p style={{ color: '#9ca3af', fontSize: 13 }}>No links yet.</p>
+                    ) : (
+                      sections.map(({ field, via, rows }) =>
+                        rows.length === 0 ? null : (
+                          <div key={field.name} style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>
+                              {field.label}
+                            </div>
+                            <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {rows.map((r) => {
+                                const targetLabel =
+                                  (referenceLabels[field.name] ?? {})[String(r[via.remoteField])] ??
+                                  String(r[via.remoteField]).slice(0, 8) + '…'
+                                const fromStr = r.effectiveFrom
+                                  ? new Date(String(r.effectiveFrom)).toLocaleString()
+                                  : null
+                                const toStr = r.effectiveTo
+                                  ? new Date(String(r.effectiveTo)).toLocaleString()
+                                  : null
+                                return (
+                                  <li
+                                    key={String(r.id)}
+                                    style={{
+                                      padding: '5px 10px',
+                                      border: '1px solid #e5e7eb',
+                                      borderRadius: 6,
+                                      fontSize: 13,
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                    }}
+                                  >
+                                    <span style={{ color: '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <span
+                                        style={{
+                                          display: 'inline-block',
+                                          width: 6,
+                                          height: 6,
+                                          borderRadius: '50%',
+                                          background: '#10b981',
+                                          flexShrink: 0,
+                                        }}
+                                      />
+                                      {targetLabel}
+                                    </span>
+                                    <span style={{ fontSize: 12, color: '#6b7280', textAlign: 'right' }}>
+                                      {toStr ? `${fromStr} → ${toStr}` : fromStr ? `since ${fromStr}` : 'pending…'}
+                                    </span>
+                                  </li>
+                                )
+                              })}
+                            </ol>
+                          </div>
+                        ),
+                      )
+                    )}
+                  </>
+                )
+              })()}
             </>
           ) : (
             <p style={{ color: '#9ca3af', fontSize: 13 }}>Select a record to view its fields and history.</p>
@@ -291,6 +386,15 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
       </div>
     </div>
   )
+}
+
+function relativeTime(date: Date): string {
+  const mins = Math.floor((Date.now() - date.getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
 }
 
 function controlBtn(background: string, active: boolean): React.CSSProperties {
