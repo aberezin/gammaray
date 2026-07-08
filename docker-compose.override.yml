@@ -5,14 +5,18 @@ services:
   api:
     volumes: !reset []
     environment:
-      # Allow both localhost ports (host port-forward) and the Colima VM IP
-      # so the browser at http://192.168.64.13:30xx can make same-origin API calls.
-      CORS_ORIGINS: "http://localhost:3000,http://localhost:3010,http://192.168.64.13:3000,http://192.168.64.13:3010"
+      # Allow localhost + (when the claudebox harness is present) the current
+      # Colima VM IP, so the browser at http://$CLAUDEBOX_VM_IP:30xx can make
+      # same-origin API calls. Empty when running outside claudebox.
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3010${CLAUDEBOX_VM_IP:+,http://${CLAUDEBOX_VM_IP}:3000,http://${CLAUDEBOX_VM_IP}:3010}"
   frontend:
     volumes: !reset []
     environment:
       AUTH_SECRET: "claudebox-dev-secret-32-chars-ok!"
+      # Forward so next.config.ts can populate allowedDevOrigins.
+      CLAUDEBOX_VM_IP: "${CLAUDEBOX_VM_IP:-}"
   music:
     volumes: !reset []
     environment:
       AUTH_SECRET: "claudebox-dev-secret-32-chars-ok!"
+      CLAUDEBOX_VM_IP: "${CLAUDEBOX_VM_IP:-}"
