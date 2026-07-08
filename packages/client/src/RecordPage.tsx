@@ -42,6 +42,9 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({})
   const [revisions, setRevisions] = useState<RowRevisionDto[]>([])
   const [addInputs, setAddInputs] = useState<Record<string, string>>({})
+  // Transient "✓ Added X" flash per quick-add target — the input clears on
+  // success so without this the click looks like a no-op.
+  const [addedFlash, setAddedFlash] = useState<Record<string, string>>({})
 
   const selected = records.find((r) => String(r.id) === selectedId) ?? null
   const selectedVersion = selected ? Number(selected.version ?? 0) : null
@@ -126,8 +129,14 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
 
   async function handleAdd(collection: string) {
     if (suspect) return
-    await page.addRelated(collection, addInputs[collection] ?? '')
+    const name = (addInputs[collection] ?? '').trim()
+    if (!name) return
+    await page.addRelated(collection, name)
     setAddInputs((s) => ({ ...s, [collection]: '' }))
+    setAddedFlash((s) => ({ ...s, [collection]: name }))
+    setTimeout(() => {
+      setAddedFlash((s) => (s[collection] === name ? { ...s, [collection]: '' } : s))
+    }, 2500)
   }
 
   return (
@@ -153,6 +162,11 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
                 >
                   Add {t.label}
                 </button>
+                {addedFlash[t.collection] && (
+                  <span style={{ fontSize: 12, color: '#10b981', whiteSpace: 'nowrap' }}>
+                    ✓ Added &ldquo;{addedFlash[t.collection]}&rdquo;
+                  </span>
+                )}
               </React.Fragment>
             )
           })}
