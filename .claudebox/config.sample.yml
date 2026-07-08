@@ -1,0 +1,10 @@
+# .claudebox/config.sample.yml — schema reference (committed).
+# claudebox generates the real, gitignored .claudebox/config.yml on first run.
+id: auto                  # stable project identity; generated once, never change
+vm:
+  cpu: 4
+  memory: 8GiB
+  disk: 60GiB
+  autostop: false         # stop the VM when the harness container exits
+network:
+  hostname:               # optional /etc/hosts alias -> the VM's current IP; blank = raw IP

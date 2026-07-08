@@ -35,3 +35,4 @@ playwright-report/
 
 # Machine-specific environment notes (template is LOCAL.example.md)
 /LOCAL.md
+/.claudebox/config.yml
