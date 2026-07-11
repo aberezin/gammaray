@@ -1,22 +1,33 @@
-# Claudebox override: remove host bind-mounts (path not visible to Colima VM).
-# The Dockerfiles COPY all source in, so the images are self-contained.
+# Claudebox override: remove host bind-mounts (path not visible to Colima VM)
+# and steer the two addressing planes per the claudebox N-tier networking
+# standard (docs/design/n-tier-networking.md, harness ≥2.7.0):
+#   - service↔service: address by cb-net container name (http://api:3001) — stable
+#   - browser→service: address by http://$CLAUDEBOX_VM_IP:<port>            — rotates
+# Everything below just forwards those two variables so the same code paths work
+# whether we're in claudebox or not (empty → localhost fallback).
 # Use !reset to fully replace (not merge) the volumes list from the base file.
 services:
   api:
     volumes: !reset []
     environment:
       # Allow localhost + (when the claudebox harness is present) the current
-      # Colima VM IP, so the browser at http://$CLAUDEBOX_VM_IP:30xx can make
-      # same-origin API calls. Empty when running outside claudebox.
-      CORS_ORIGINS: "http://localhost:3000,http://localhost:3010${CLAUDEBOX_VM_IP:+,http://${CLAUDEBOX_VM_IP}:3000,http://${CLAUDEBOX_VM_IP}:3010}"
+      # VM IP and stable hostname alias — either can be the browser-plane origin.
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3010${CLAUDEBOX_VM_IP:+,http://${CLAUDEBOX_VM_IP}:3000,http://${CLAUDEBOX_VM_IP}:3010}${CLAUDEBOX_HOSTNAME:+,http://${CLAUDEBOX_HOSTNAME}:3000,http://${CLAUDEBOX_HOSTNAME}:3010}"
   frontend:
     volumes: !reset []
     environment:
       AUTH_SECRET: "claudebox-dev-secret-32-chars-ok!"
-      # Forward so next.config.ts can populate allowedDevOrigins.
+      # Forward the browser-plane inputs so next.config.ts can populate
+      # allowedDevOrigins for both possible origins.
       CLAUDEBOX_VM_IP: "${CLAUDEBOX_VM_IP:-}"
+      CLAUDEBOX_HOSTNAME: "${CLAUDEBOX_HOSTNAME:-}"
+      # Client-side fetches (RxDB replication, register, GraphQL) go through the
+      # browser plane → the VM IP. SSR still uses API_INTERNAL_URL (base compose).
+      NEXT_PUBLIC_API_URL: "http://${CLAUDEBOX_VM_IP:-localhost}:3001"
   music:
     volumes: !reset []
     environment:
       AUTH_SECRET: "claudebox-dev-secret-32-chars-ok!"
       CLAUDEBOX_VM_IP: "${CLAUDEBOX_VM_IP:-}"
+      CLAUDEBOX_HOSTNAME: "${CLAUDEBOX_HOSTNAME:-}"
+      NEXT_PUBLIC_API_URL: "http://${CLAUDEBOX_VM_IP:-localhost}:3001"
