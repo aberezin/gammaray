@@ -119,7 +119,40 @@ Auth is fully stateless JWT. No server-side session storage.
 
 ## Containerization
 
-All three services (PostgreSQL, API, frontend) are containerized with `docker compose`. The runtime on macOS is **Colima** (not Docker Desktop). See `DEV_SETUP.md` for the full guide.
+All four services (PostgreSQL, API, and the two example frontends) are containerized with `docker compose`. The runtime on macOS is **Colima** (not Docker Desktop). See `DEV_SETUP.md` for the full guide.
+
+```mermaid
+flowchart TB
+    browser["Browser (host)"]
+
+    subgraph net["docker compose network"]
+        fe["frontend :3000<br/>Next.js — Rolodex"]
+        mu["music :3010<br/>Next.js — Crate"]
+        api["api :3001<br/>NestJS · migrates+seeds on start"]
+        pg[("postgres :5432<br/>healthcheck: pg_isready")]
+    end
+
+    pgvol[("postgres_data<br/>named volume — persisted across restarts")]
+
+    browser -- "localhost:3000" --> fe
+    browser -- "localhost:3010" --> mu
+    browser -- "localhost:3001<br/>GraphQL / REST auth" --> api
+
+    fe -- "API_INTERNAL_URL<br/>http://api:3001<br/>(SSR / NextAuth)" --> api
+    mu -- "API_INTERNAL_URL<br/>http://api:3001" --> api
+
+    api -- "postgres:5432" --> pg
+    pg --- pgvol
+
+    fe -. "depends_on: service_started" .-> api
+    mu -. "depends_on: service_started" .-> api
+    api -. "depends_on: service_healthy" .-> pg
+```
+
+- **Published ports** (`host:container`): `3000:3000` (Rolodex), `3010:3010` (Crate), `3001:3001` (API), `5432:5432` (Postgres). All overridable via `PORT`/`MUSIC_PORT`/`API_PORT`/`DB_PORT` env vars so parallel instances don't collide.
+- **Internal DNS** — inside the compose network, services address each other by compose-service name (`postgres`, `api`). The two frontends never talk to each other; they meet only at the shared `api`.
+- **Persistence** — only `postgres_data` (named volume) survives `docker compose down`. Application containers are rebuilt from Dockerfiles; source is bind-mounted for hot-reload in dev (`./apps/*/src`, `./packages`). Under claudebox those bind-mounts are stripped via `docker-compose.override.yml` `!reset []` because the workspace path is not visible to the Colima VM.
+- **Startup order** — Postgres must be `healthy` (pg_isready) before the API starts; the API only needs to be `started` before the frontends launch. The API's CMD runs `db:migrate` then `db:seed` before `dev`, so migrations always apply on boot.
 
 **Recommended: full stack in Docker** (verified — auth + e2e suite pass against it):
 ```bash
@@ -192,7 +225,6 @@ git config lfs.https://github.com/aberezin/gammaray.git/info/lfs.locksverify fal
 
 ## TODO
 
-- **Document container architecture with Mermaid diagram:** Create a visual showing the three containers (postgres, api, frontend), their ports, volumes, and inter-container networking (docker internal network vs host port mapping). Include health checks and startup dependencies.
 - **Split `packages/database` into per-app database packages:** entities are now *grouped* (framework/rolodex/music subdirs + `FRAMEWORK_ENTITIES`/`ROLODEX_ENTITIES`/`MUSIC_ENTITIES`/`ALL_ENTITIES`, consumed in both registration sites — the double-registration footgun is fixed). The next rung is true decoupling: split the example groups into their own packages (`@gammaray/rolodex-database`, `@gammaray/music-database`), each owning its entities **and** migrations, leaving `@gammaray/database` as framework-only (`user`/`app_meta`/`row_revision` + the data-source factory + migrate runner). The API would compose `ALL_ENTITIES` from the framework + whichever app packages it serves, so adding an app touches no framework code. The wrinkle to solve: the migrate runner globs one `migrations/` dir, and the existing migration history is interleaved (e.g. `InitialSchema` creates `users`), so migrations must either be aggregated across packages at runtime or only split going forward. Pairs with the per-app logical-DB work (Phase 2, `docs/example-app-spec.md` §7d / `GAMMARAY_SCHEMAS`). Also: the engine's `schema-tables.ts` still hand-pairs descriptor↔entity per app — could consume the grouped arrays once the packages exist.
 - **Data-epoch guard is load-time only → already-open clients silently go stale (ADR 0012):** `DataEpochGuard` checks `serverDataEpoch` once on mount (`useEffect([])`), and out-of-band server data changes (seed/migrate) write through the engine directly — NOT the mutation resolver — so they emit no live `rowUpdated` WebSocket events. Net: an already-open tab neither pulls the new rows live nor re-checks the epoch, so it shows stale data until the user happens to reload (the manual fix). The load-time reslate itself is correct + tested (`apps/example/tests/data-epoch.spec.ts`); the gap is *mid-session* detection. Options: (a) poll `serverDataEpoch` periodically (or subscribe to an epoch-changed WS event) while the app is open and prompt-to-reslate then; (b) have seed/migrate bump the epoch AND emit a lightweight "data changed" signal. Low priority for runtime (out-of-band changes are rare in prod), but it's the exact confusion the music seed caused (PR #29 — a pre-seed tab looked empty until reload). Also minor UX: declining the reslate prompt acknowledges the new epoch and never nudges again, leaving the client stale with no further cue.
 - **M2m temporal validity: UI not yet surfaced.** Join tables now carry `effective_from`/`effective_to` (set by the engine on create/soft-delete; migration `1000000000012`). The history is queryable in Postgres and replicates to RxDB. What remains: (a) a "link history" panel in the record detail UI showing each link's active period; (b) a "last modified / recent activity" view on the parent fed by `effective_from`/`effective_to` without touching the parent's version/conflict semantics.
@@ -200,43 +232,3 @@ git config lfs.https://github.com/aberezin/gammaray.git/info/lfs.locksverify fal
 - **Generic manual-merge conflict resolution (framework feature gap):** The generic `RecordConflictBanner` offers only **Keep mine / Keep theirs** — the retired note app additionally let the user hand-edit a merged value before resolving. Bringing that to the framework means a field-aware merge editor in the banner (pick/edit per field, not whole-row) plus a `resolveWith(customRow)` path through `resolveRowConflict` (the mutation already accepts an arbitrary row, so the server side largely exists). Complex in the general case — fields have types (Reference/MultiReference/Int/Bool), so a generic per-field merge UI is non-trivial. Surfaced retiring notes (the note's textarea made manual merge trivial; a generic descriptor-driven one is not).
 - **Generic "restore a past version" from history (framework feature gap):** `RecordPage` renders revision history read-only; the retired note app let the user restore a past revision into the editor. Generically this is "write an old `row_revisions` snapshot back as a new version" — needs a server op (re-apply a chosen revision's `data` as a fresh versioned write, with conflict semantics) and a Restore button per revision in the history list. Complex in the general case because a snapshot may reference rows/links that have since changed or been deleted (References/MultiReferences), so a naive restore can resurrect dangling refs. Surfaced retiring notes.
 - **Stale local RxDB after builds → transient client errors; need a robust "reset the local store" path:** Observed (2026-06-30) an `ensureNotFalsy() is falsy:` RxDB error in the browser on both `:3000` and `:3010` after iterating through several builds; it cleared on reload and a *fresh* browser never hit it — so the cause is a **stale local IndexedDB replica** that accumulated across builds whose persisted shape changed underneath it (the `dbName` rename `notesync`→`rolodex`, descriptor field changes, and the data-epoch bump from `DropNotes`). The local replica is disposable (the server is authoritative), but today it only auto-heals on *schema-mismatch* RxDB codes: `getDatabase()` in `packages/client/src/rxdb.ts` wipes+rebuilds on `DB6`/`DM5`/`DM1` only (`isSchemaMismatch`), so any *other* init-time failure (like this `ensureNotFalsy`) throws instead of self-healing. Directions: (a) broaden `getDatabase()` to **retry-once** — on ANY build failure, `removeRxDatabase` + rebuild (and re-pull from the server) before giving up; (b) a build/version signal — bump a client "store version" (or detect a changed build id) and proactively reslate via the existing data-epoch machinery so a stale store is discarded on the first load after a deploy; (c) make the **"Reset local copy"** control more discoverable / surface it automatically when init fails. Low user impact in prod (the persisted shape is stable there), but it bites during rapid local iteration. Needs the actual `ensureNotFalsy` stack to confirm whether it fires at DB init (→ (a) fixes it) or during replication (→ different fix) before implementing.
-
-<!-- claudebox:framework-guidance (added by framework-Claude — a compact mirror of the harness's baked conventions, since this existing-repo project never received the framework CLAUDE.md template. Keep or let framework-Claude refresh it.) -->
-## Running under claudebox — framework must-knows
-
-This repo runs inside a **claudebox** container on its own Colima VM (Docker-out-of-Docker).
-The harness bakes conventions you must follow. The **authoritative, always-current** list of
-features and changes is **`~/CHANGELOG.md`** — read it if a harness behavior surprises you.
-Run **`cb-help`** to list the baked `cb-*` helper commands.
-
-### Networking — the N-tier standard (two addressing planes; keep them separate)
-- **Service ↔ service** (API→Postgres, Next SSR→API): on the `cb-net` docker network → address
-  by **container name** (`http://api:3001`, `postgres:5432`). Stable.
-- **Browser → service** (the human's Chrome, or `cb-browser cdp` — both run **on the Mac**):
-  reachable **only** at **`http://$CLAUDEBOX_VM_IP:<port>`** (a published port). NOT `localhost`
-  (Mac loopback, not the VM), NOT a `cb-net` name (Chrome can't resolve it).
-- The VM IP **rotates** on VM restart — **never hardcode it**. Read **`$CLAUDEBOX_VM_IP`** fresh
-  (or `cb-browser ip`) and drive CORS / Next `allowedDevOrigins` / `NEXT_PUBLIC_*` bases from it
-  (and `$CLAUDEBOX_HOSTNAME` if the human set one via `claudebox net`). Bind servers to `0.0.0.0`.
-  (You already adopted this — this is the durable statement of the rule.)
-
-### Disk discipline (avoid the ENOSPC-kills-the-Bash-tool trap)
-Repeated `docker build`s and large image pulls accumulate in the VM's overlay, which also hosts
-your `/tmp`. If it fills, the Bash tool can't create `/tmp/claude-501` and **every** command fails
-with `ENOSPC` — including `cb-report-bug`. So: run `docker builder prune -f` after iterating on
-image builds, `docker image prune -f` for unused layers, and keep an eye on `df -h /`. If you do
-hit ENOSPC, ask the human to run `docker system prune -a -f` on the Mac.
-
-### Escalating framework issues (two channels)
-- A concrete harness **defect** → `cb-report-bug "<title>" --layer image|wrapper|entrypoint|networking` (heredoc body).
-- A general **"what's the right claudebox pattern"** question any project would hit →
-  **`cb-consult open "<title>" --layer <area>`**: a supervised thread with framework-Claude that
-  becomes a baked standard. Right after opening, launch **`cb-consult watch`** as a background task
-  to be alerted when the approved reply lands; then `cb-consult read <id>`, adopt it, `cb-consult resolve <id>`.
-
-### Secrets & what survives a rebuild
-- Secrets are **file-based only**: `.claudebox/secrets.env` (gitignored, chmod 600). **Never** put a
-  secret value on a command line.
-- Your **workspace** and **`~/.claude`** survive rebuilds/restarts; anything installed to the
-  container filesystem (`apt`, `npm -g`) does **not** — use `~/.claude/init.d/*.sh` for persistent setup.
-<!-- /claudebox:framework-guidance -->
