@@ -113,6 +113,53 @@ test.describe('Contacts (type-A many-to-many tags)', () => {
     await ctxB.close()
   })
 
+  // The "Link history" panel on the contact detail surfaces each m2m link's
+  // effective_from/effective_to. A live link renders as "since <ts>"; unlinking
+  // stamps effective_to and the same row now renders as "<from> → <to>".
+  test('link history shows an active link, then a closed period after unlink', async ({ browser }: { browser: Browser }) => {
+    const stamp = Date.now()
+    const tag = `hist${stamp}`
+    const surname = `LinkHistory${stamp}`
+
+    const ctx = await browser.newContext()
+    const p = await ctx.newPage()
+    await register(p, uniqueEmail('link-history'))
+    await p.goto('/contacts')
+    await expect(p.getByText('Lovelace')).toBeVisible({ timeout: 10_000 })
+
+    // Create a tag, then a contact linked to it.
+    await p.getByPlaceholder('New tag name').fill(tag)
+    await p.getByRole('button', { name: 'Add tag' }).click()
+    await p.getByRole('button', { name: 'New contact' }).click()
+    await p.getByLabel('First name').fill('Link')
+    await p.getByLabel('Last name').fill(surname)
+    await pickReference(p, 'Tags', tag)
+    await p.getByRole('button', { name: 'Save' }).click()
+
+    // Select the new contact so the detail pane renders.
+    await p.getByRole('row').filter({ hasText: surname }).click()
+
+    // The panel exists and shows an ACTIVE ("since …") entry for the tag.
+    await expect(p.getByRole('heading', { name: 'Link history' })).toBeVisible({ timeout: 8_000 })
+    const activeLine = p.locator('li').filter({ hasText: tag }).filter({ hasText: /since / })
+    await expect(activeLine).toBeVisible({ timeout: 8_000 })
+    await expect(activeLine).not.toContainText('→')
+
+    // The header shows a "last change …" relative-time hint.
+    await expect(p.getByText(/last change /)).toBeVisible()
+
+    // Unlink the tag by removing its chip in edit mode; the panel should then
+    // show a closed period (from → to) for that link.
+    await p.getByRole('button', { name: 'Edit' }).click()
+    await p.getByRole('button', { name: `Remove ${tag}` }).click()
+    await p.getByRole('button', { name: 'Save' }).click()
+
+    const closedLine = p.locator('li').filter({ hasText: tag }).filter({ hasText: '→' })
+    await expect(closedLine).toBeVisible({ timeout: 8_000 })
+
+    await ctx.close()
+  })
+
   // Offline-first m2m: a brand-new tag AND a contact linked to it, both created
   // offline, sync together atomically on reconnect (multi-parent batch).
   test('an offline tag + a contact linked to it sync atomically', async ({ browser }: { browser: Browser }) => {
