@@ -1,7 +1,7 @@
 # Entity-Relationship Diagram
 
 The PostgreSQL schema (via TypeORM entities in `packages/database`). The schema is
-the **type-A** tables (the generalized framework — `contacts`, `companies`,
+the **[type-A](concepts.md#type-a)** tables (the generalized framework — `contacts`, `companies`,
 `categories`, `tags`, `contact_tags`, and the Crate/music tables) plus the generic
 `row_revisions` log and the framework `users`/`app_meta`. (The original single-note
 feature and its `notes`/`note_revisions` tables were retired — migration
@@ -100,3 +100,11 @@ is deliberate and central to the offline-first design:
   ancestor for `revisioned` tables (ADR 0010).
 - **`conflict_status`** (`none` / `detected` / `resolved`) is the
   `row_revisions_conflict_status_enum` on `row_revisions`.
+
+## See also
+
+- [../platform-architecture.md](../platform-architecture.md) `## Data model` — points at this doc; also the deployment topology and ADR index.
+- [adr/0010-generic-revisions-merge-conflict.md](adr/0010-generic-revisions-merge-conflict.md) — the revision-log design that shapes the polymorphic `row_revisions`.
+- [adr/0005-soft-foreign-key-references.md](adr/0005-soft-foreign-key-references.md) — why some references are soft (un-enforced) rather than hard FKs.
+- [example-app-spec.md](example-app-spec.md) — the type-A app-spec template (worked for Crate); the ERD is the shape a spec expands into.
+- [README.md](README.md) — the documentation landing index.

@@ -28,6 +28,48 @@ The PostgreSQL schema and its relationships (hard FKs, soft references,
 deferrable FKs, and the polymorphic revision log) are diagrammed in
 [`docs/erd.md`](./docs/erd.md).
 
+## Deployment topology
+
+Four services run under `docker compose` on macOS via Colima (not Docker
+Desktop): PostgreSQL, the shared API, and the two example frontends
+(Rolodex, Crate). The frontends never talk to each other — they meet only
+at the shared API.
+
+```mermaid
+flowchart TB
+    browser["Browser (host)"]
+
+    subgraph net["docker compose network"]
+        fe["frontend :3000<br/>Next.js — Rolodex"]
+        mu["music :3010<br/>Next.js — Crate"]
+        api["api :3001<br/>NestJS · migrates+seeds on start"]
+        pg[("postgres :5432<br/>healthcheck: pg_isready")]
+    end
+
+    pgvol[("postgres_data<br/>named volume — persisted across restarts")]
+
+    browser -- "localhost:3000" --> fe
+    browser -- "localhost:3010" --> mu
+    browser -- "localhost:3001<br/>GraphQL / REST auth" --> api
+
+    fe -- "API_INTERNAL_URL<br/>http://api:3001<br/>(SSR / NextAuth)" --> api
+    mu -- "API_INTERNAL_URL<br/>http://api:3001" --> api
+
+    api -- "postgres:5432" --> pg
+    pg --- pgvol
+
+    fe -. "depends_on: service_started" .-> api
+    mu -. "depends_on: service_started" .-> api
+    api -. "depends_on: service_healthy" .-> pg
+```
+
+- **Published ports** (`host:container`): `3000:3000` (Rolodex), `3010:3010` (Crate), `3001:3001` (API), `5432:5432` (Postgres). All overridable via `PORT`/`MUSIC_PORT`/`API_PORT`/`DB_PORT` env vars so parallel instances don't collide.
+- **Internal DNS** — inside the compose network, services address each other by compose-service name (`postgres`, `api`).
+- **Persistence** — only `postgres_data` (named volume) survives `docker compose down`. Application containers are rebuilt from Dockerfiles; source is bind-mounted for hot-reload in dev (`./apps/*/src`, `./packages`).
+- **Startup order** — Postgres must be `healthy` (`pg_isready`) before the API starts; the API only needs to be `started` before the frontends launch. The API's `CMD` runs `db:migrate` then `db:seed` before `dev`, so migrations always apply on boot.
+
+For how to run and troubleshoot this stack locally (browser-side vs server-side API URL, Colima VM IP access, stale-port symptoms), see [`DEV_SETUP.md`](./DEV_SETUP.md); for the agent-oriented runbook see [`CLAUDE.md`](./CLAUDE.md) `## Containerization`.
+
 ## Secure Development Processes
 - TODO: Define security practices, secret management, dependency scanning, and code review requirements
 
@@ -136,28 +178,11 @@ snapshot-and-compact, or archive to cold storage. Note retention likely belongs
 Open question: how truncation interacts with 3-way merge, which relies on the
 common-ancestor revision still existing.
 
-## Engineering backlog / TODOs
+## Engineering backlog
 
-Non-feature maintenance and tooling tasks, tracked here until scheduled.
-
-- **Update Next.js to the latest version.** `apps/example` is on Next.js 15
-  (App Router). Bump to the latest release, review the changelog/codemods for
-  breaking changes, and re-run the e2e suite. Watch for App Router, caching, and
-  `next-auth`/Auth.js v5 compatibility shifts.
-- **Add a TypeScript LSP to Claude Code sessions.** Give agent sessions a
-  TypeScript language server so they get go-to-definition, find-references,
-  hover types, and rename across the monorepo — instead of relying on grep + the
-  per-package `tsc --noEmit` lint. Should resolve cross-package types
-  (`@gammaray/core`, `@gammaray/database`, etc.) via the workspace.
-- **Repair process before destructive local reset** (see ADR 0008 / the
-  `TODO(repair)` in `SyncHealthBanner.tsx`): recover unsynced local writes before
-  "Reset local data" wipes the RxDB replica.
-- **Pending-vs-flushed sync indicator on the type-A pages.** The type-A pages show
-  a `SyncIndicator` ("● Synced"), but it reflects only the online/offline toggle,
-  not whether local writes have actually flushed to the server — a user can't tell
-  pending from synced. Drive a true synced/pending state from the replication
-  `active$` and/or the `BatchCoordinator`'s in-flight buffer (pending while rows are
-  buffered/un-acked, synced once the batch commits).
+Forward-looking work — features and improvements not yet built — lives in
+[`docs/backlog.md`](docs/backlog.md). Decisions promote from the backlog into
+this file's ADR index once they're settled and shipped.
 
 ## Notes
 - Two separate frontend applications sharing a single backend
@@ -165,3 +190,11 @@ Non-feature maintenance and tooling tasks, tracked here until scheduled.
 - Future decision needed: Redis vs RabbitMQ for messaging — validate the choice
   by re-running `load-tests/k6/connection-ramp.js` against a multi-instance API
 - Chose TypeORM over Prisma due to complex data model requirements
+
+## See also
+
+- [docs/README.md](docs/README.md) — the documentation landing index.
+- [docs/erd.md](docs/erd.md) — the entity-relationship diagram referenced by ##Data model.
+- [DEV_SETUP.md](DEV_SETUP.md) — how to run the topology described here locally.
+- [CLAUDE.md](CLAUDE.md) — the agent runbook (conventions, gotchas).
+- [docs/backlog.md](docs/backlog.md) — engineering backlog (open work not yet in code or ADRs).

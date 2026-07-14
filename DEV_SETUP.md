@@ -104,6 +104,25 @@ wired up in `docker-compose.yml` (frontend `environment`). Getting this wrong
 manifests as **"Invalid email or password" on every login** even with correct
 credentials, because the server-side credential check can't reach the API.
 
+## Accessing from a non-localhost origin (e.g. the Colima VM IP)
+
+If you browse the app at something other than `localhost` — most commonly the
+Colima VM IP (`http://192.168.64.16:3000`), useful when a container on the same
+Colima network needs to hit it — three extra gotchas apply:
+
+1. **CORS.** The API's `CORS_ORIGINS` env var must include the origin you're
+   browsing from. Set in `docker-compose.override.yml` (already handled for the
+   claudebox-managed VM IP + hostname).
+2. **Next.js `allowedDevOrigins`.** In dev mode, Next.js 15+ blocks RSC flight
+   data from non-`localhost` hosts. Without the origin in `allowedDevOrigins`
+   (`apps/example/next.config.ts`, `apps/music/next.config.ts`), React never
+   hydrates — the page shows SSR HTML only, no RxDB, no sync. The configs read
+   `CLAUDEBOX_VM_IP` / `CLAUDEBOX_HOSTNAME` fresh at startup so this works
+   without hardcoding a rotating IP.
+3. **`crypto.randomUUID` insecure context.** `randomUUID()` requires HTTPS or
+   `localhost`. A plain `http://` VM IP breaks it. The `use-record-page.ts`
+   helper falls back to `crypto.getRandomValues()` for these contexts.
+
 ## Testing Workflow
 
 ### 1. Start the stack
@@ -206,5 +225,12 @@ docker compose stop
 - **Offline-first**: Changes are applied locally first, then synced to the server
 - **Conflict resolution**: If two clients edit simultaneously, conflicts are detected and the user can merge
 - **WebSocket subscriptions**: Real-time updates when other clients modify records
+
+## See also
+
+- [platform-architecture.md](./platform-architecture.md) `## Deployment topology` — the diagram of what boots up when you run `docker compose up -d`.
+- [CLAUDE.md](./CLAUDE.md) `## Containerization` — the agent-facing summary + claudebox-specific notes.
+- [LOCAL.example.md](./LOCAL.example.md) — template for your machine-specific `LOCAL.md`.
+- [docs/README.md](./docs/README.md) — full documentation index.
 
 See `CLAUDE.md` for more architecture details.

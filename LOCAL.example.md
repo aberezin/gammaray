@@ -37,3 +37,9 @@ factual; record decisions, not history.
 ## Anything else
 
 - Editor/IDE specifics, credentials location, OS-version gotchas, etc.
+
+## See also
+
+- [DEV_SETUP.md](./DEV_SETUP.md) — the canonical setup guide (this file only records overrides from that baseline).
+- [CLAUDE.md](./CLAUDE.md) `## Local machine` — the agent-facing note that points at `LOCAL.md`.
+- [docs/README.md](./docs/README.md) — full documentation index.

@@ -1,20 +1,74 @@
 # GammaRay
 
-## Overview
-Gammaray is an POC application to develop a reliable tech stack that can be coded by agents.
-The engineering team is made up of Alan Berezin and various agents.
+A POC for a **tech stack that agents can build in.** GammaRay isn't the product
+— the *stack* is the product. The example apps prove that a generic,
+descriptor-driven engine can express real offline-first, sync-and-conflict
+apps without per-table code.
 
-## Getting Started
+## What's interesting
 
-**👉 [DEV_SETUP.md](./DEV_SETUP.md)** — How to run the app locally and test in Chrome. **Start here.**
+- **Descriptor-driven engine.** Each table (a "**type-A**" table — see
+  [concepts.md](./docs/concepts.md)) is described by one
+  `TableDescriptor`: fields, kinds, merge strategy, references, join
+  tables. The server engine and the client runtime are entirely generic —
+  adding a table is configuration, not code. See
+  [ADR 0002](./docs/adr/0002-descriptor-driven-tables.md) and
+  [ADR 0009](./docs/adr/0009-generic-server-engine-json-transport.md).
+- **Offline-first with real sync + conflict resolution.** The client owns an
+  RxDB replica, replicates over GraphQL + a WebSocket push channel, and
+  survives disconnects. When two clients diverge, the server performs a
+  3-way merge for `revisioned` tables or hands the conflict to the UI.
+  See [ADR 0010](./docs/adr/0010-generic-revisions-merge-conflict.md).
+- **Type-A m2m with temporal validity.** Join tables record
+  `effectiveFrom`/`effectiveTo` for every link, so link history is
+  queryable without touching the parent's version/conflict semantics.
+  See [ADR 0007](./docs/adr/0007-many-to-many-virtual-fields.md).
+- **App-agnostic.** Two example apps share the same engine, packages, and
+  API: **Rolodex** (`apps/example`, a contact CRM) and **Crate**
+  (`apps/music`, a music library). Swapping the schema swaps the app.
 
-Other key docs:
-- [CLAUDE.md](./CLAUDE.md) — Project overview, architecture, and commands for agents
-- [LOCAL.md](./LOCAL.md) (git-ignored) — Machine-specific setup (package manager, container runtime, etc.)
+## Quick start
 
-## Agent Instructions
+**👉 [DEV_SETUP.md](./DEV_SETUP.md)** — how to run the stack locally and test
+it in Chrome. **Start here.**
 
-    TODO need commit rules
+TL;DR:
+```bash
+docker compose up -d          # postgres :5432, api :3001, rolodex :3000, crate :3010
+open http://localhost:3000    # register, then explore Contacts / Companies / Categories / Tags
+```
+
+## What's in the repo
+
+```
+apps/
+  api/          NestJS backend — GraphQL + REST auth, shared across all frontends
+  example/      Next.js 15 frontend — Rolodex (contact CRM)
+  music/        Next.js 15 frontend — Crate (music library)
+packages/
+  core/         The descriptor system (FieldKind, TableDescriptor, MergeStrategyKind) + generic merge/dependency logic
+  rolodex-schema/  Rolodex's TableDescriptors
+  music-schema/    Crate's TableDescriptors
+  client/       Generic RxDB + replication runtime + RecordPage
+  ui/           Framework React components (RecordForm, RecordList, RecordConflictBanner, …)
+  database/     TypeORM entities + migrations + data-source factory
+  auth/         JwtPayload shared between api and frontends
+load-tests/     k6 load tests for the realtime path
+docs/           Topic docs, ADRs, ERD, example-app-spec
+```
+
+## Documentation
+
+Full index in [**docs/README.md**](./docs/README.md). The main entry points:
+
+| Doc | Audience | What |
+|---|---|---|
+| [DEV_SETUP.md](./DEV_SETUP.md) | Someone running it locally | Setup, gotchas, troubleshooting |
+| [docs/concepts.md](./docs/concepts.md) | Anyone reading other docs | **Vocabulary** — type-A, descriptors, merge strategies, temporal validity, data epoch, etc. |
+| [platform-architecture.md](./platform-architecture.md) | Architects | Stack, deployment topology, ADR index |
+| [CLAUDE.md](./CLAUDE.md) | Agents | Conventions and runbook |
+| [docs/documentation.md](./docs/documentation.md) | Anyone editing docs | House style, `See also` rule, update triggers |
+| [docs/backlog.md](./docs/backlog.md) | Contributors | Known work not yet in code |
 
 ## SDLC
 
@@ -88,7 +142,9 @@ intercepting the push), disable the optional lock check for your clone:
 git config lfs.https://github.com/aberezin/gammaray.git/info/lfs.locksverify false
 ```
 
-### See Also
-- [platform-architecture.md](./platform-architecture.md) — architecture decision log + ADR index
-- [docs/erd.md](./docs/erd.md) — entity-relationship diagram of the database schema
+## See also
 
+- [docs/README.md](./docs/README.md) — the full documentation index.
+- [platform-architecture.md](./platform-architecture.md) — architecture, topology, and the ADR index.
+- [DEV_SETUP.md](./DEV_SETUP.md) — the setup guide referenced by "Quick start."
+- [CLAUDE.md](./CLAUDE.md) — the conventions agents follow when editing this repo.

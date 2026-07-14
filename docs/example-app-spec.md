@@ -13,10 +13,10 @@ different app, copy the structure and refill sections 1–6.
 
 ## 0. How the framework turns this spec into an app
 
-GammaRay is "type-A": each table is a row with optional foreign keys, described by
-one **`TableDescriptor`**. The descriptor drives the server model, the RxDB
-schema, the sync queries, and the generic UI — so an app is almost entirely
-configuration, not code.
+GammaRay is "type-A" (defined in [concepts.md](concepts.md)): each table is a
+row with optional foreign keys, described by one **`TableDescriptor`**. The
+descriptor drives the server model, the RxDB schema, the sync queries, and
+the generic UI — so an app is almost entirely configuration, not code.
 
 **Adding one table costs:**
 
@@ -278,3 +278,11 @@ _Phase 2 — separate logical DB per app (§7d), after Phase 1 is green:_
 - [ ] **Pages**: the 5 pages + home→/albums; `label` quick-add-only (§5).
 - [ ] **Seed sizes** (§6), esp. the ~80-track playlist.
 - [ ] **Scope of this round**: do we build the whole thing, or stop after step 1 (the hoist) since that's the biggest/riskiest and most reusable piece?
+
+## See also
+
+- [erd.md](erd.md) — the type-A spine (columns, join-table shape, revision log) a spec ultimately expands into.
+- [../platform-architecture.md](../platform-architecture.md) `## Architecture Decision Records (ADRs)` — the ADR series that grounds the descriptor system.
+- [adr/0002-descriptor-driven-tables.md](adr/0002-descriptor-driven-tables.md) — why the descriptor is the single source of truth.
+- [adr/0007-many-to-many-virtual-fields.md](adr/0007-many-to-many-virtual-fields.md) — how a `MultiReference` becomes a join-table row.
+- [README.md](README.md) — the documentation landing index.
