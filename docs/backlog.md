@@ -126,12 +126,6 @@ here. When it ships, drop it.
   changelog/codemods for breaking changes, and re-run the e2e suite.
   Watch for App Router, caching, and `next-auth`/Auth.js v5
   compatibility shifts.
-- **Add a TypeScript LSP to Claude Code sessions.** Give agent sessions
-  a TypeScript language server so they get go-to-definition,
-  find-references, hover types, and rename across the monorepo — instead
-  of relying on grep + the per-package `tsc --noEmit` lint. Should
-  resolve cross-package types (`@gammaray/core`, `@gammaray/database`,
-  etc.) via the workspace.
 
 ## See also
 
