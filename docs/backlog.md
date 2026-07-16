@@ -33,6 +33,32 @@ here. When it ships, drop it.
 
 ## Client robustness / DX
 
+- **Edits to a `paged` table's rows are silently dropped (ADR 0013 gap).**
+  Reproduced 2026-07-16 on Crate's `track` table: click a track, Edit the
+  title, Save — the title appears in the list (from `pagedRows` state) and
+  the detail form, but no `pushBatch` mutation fires and a page reload
+  reverts the change. Root cause is architectural: paged tables aren't
+  bulk-pulled into RxDB, so `useRecordPage.update()` (`packages/client/src/use-record-page.ts:494`)
+  does `rowCollection(...).findOne(id) → doc?.patch()` on a doc that
+  doesn't exist locally → the patch is skipped and replication has
+  nothing to push. Attempted workaround (seed RxDB from the loaded page's
+  baseline via `insert` or `upsert + patch`) got the doc into local
+  storage but **still didn't trigger the RxDB push handler** — RxDB seems
+  not to schedule a push for a locally-authored doc that has a nonzero
+  server `version` and no `assumedMasterState` (even after an explicit
+  `replication.reSync()`). Ways forward: (a) route paged writes past RxDB
+  entirely — call `BatchCoordinator.enqueue` (or the `pushBatch` GraphQL
+  mutation) directly from `update()` when `descriptor.paged` is true,
+  accepting the loss of RxDB's offline queue for paged rows; (b) upsert
+  paged rows into RxDB as part of `fetchPage` so subsequent edits go
+  through the normal patched-doc code path RxDB knows how to push; (c)
+  dig into RxDB internals to feed it a proper `assumedMasterState` so
+  the seeded doc looks pulled. Related: `packages/client/src/batch-sync.ts:83`
+  now falls back to `newDocumentState.version` when `assumedMasterState`
+  is missing — defensive only, doesn't help until the push handler
+  actually fires.
+
+
 - **Stale local RxDB after builds → transient client errors; need a
   robust "reset the local store" path.** Observed (2026-06-30) an
   `ensureNotFalsy() is falsy:` RxDB error in the browser on both `:3000`

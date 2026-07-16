@@ -77,10 +77,17 @@ export class BatchCoordinator {
   enqueue(table: string, rows: Array<{ newDocumentState: RowRecord; assumedMasterState?: RowRecord }>) {
     return new Promise<SyncDoc[]>((resolve, reject) => {
       for (const r of rows) {
+        // Prefer assumedMasterState.version (RxDB's belief about the server's
+        // current version). Fall back to the row's own `version` field for a
+        // paged table's first local edit: the row was seeded from a pageRows
+        // response with the current server version, but RxDB never held it as
+        // a mastered doc so there's no assumedMasterState.
+        const assumedVersion = (r.assumedMasterState as RowRecord | undefined)?.version
+        const rowVersion = (r.newDocumentState as RowRecord).version
         this.buffer.push({
           table,
           doc: r.newDocumentState,
-          expectedVersion: Number((r.assumedMasterState as RowRecord | undefined)?.version ?? 0),
+          expectedVersion: Number(assumedVersion ?? rowVersion ?? 0),
         })
       }
       this.calls.push({ table, ids: rows.map((r) => String(r.newDocumentState.id)), resolve, reject })
