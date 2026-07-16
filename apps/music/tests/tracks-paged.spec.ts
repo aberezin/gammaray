@@ -89,6 +89,42 @@ test.describe('Tracks — at-scale paged list', () => {
     await expect.poll(() => totalOf(page)).toEqual(fullTotal)
   })
 
+  test('edit a seeded track persists server-side (paged update path)', async ({ page }) => {
+    await openTracks(page)
+
+    // Edit the FIRST seeded track — the one loaded via pageRows and never
+    // bulk-pulled into RxDB. This exercises the paged-update code path;
+    // editing a locally-created track wouldn't (that doc is already in RxDB).
+    const marker = `[e2e-edit-${Date.now().toString(36)}]`
+    const firstRow = rows(page).first()
+    const originalTitle = ((await firstRow.locator('td').first().textContent()) ?? '').trim()
+    const newTitle = `${originalTitle} ${marker}`
+
+    await firstRow.click()
+    await page.getByRole('button', { name: 'Edit' }).click()
+    await page.getByLabel('Title', { exact: true }).fill(newTitle)
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    // Server persistence: hard-reload (dropping the local pagedRows state so
+    // the search can only succeed if the server actually has the edit), then
+    // let the push settle before the one-shot search query fires.
+    await page.waitForTimeout(700)
+    await page.reload()
+    await waitForSynced(page)
+    const search = page.getByRole('textbox', { name: 'Search Tracks' })
+    await search.fill(marker)
+    await expect(rows(page).filter({ hasText: marker })).toHaveCount(1, { timeout: 8_000 })
+
+    // Clean up: revert the title so the seed stays unmodified for other tests.
+    await rows(page).filter({ hasText: marker }).first().click()
+    await page.getByRole('button', { name: 'Edit' }).click()
+    await page.getByLabel('Title', { exact: true }).fill(originalTitle)
+    await page.getByRole('button', { name: 'Save' }).click()
+    await page.waitForTimeout(700)
+    await search.fill(marker)
+    await expect(rows(page).filter({ hasText: marker })).toHaveCount(0, { timeout: 8_000 })
+  })
+
   test('create round-trips through the paged path; delete cleans up', async ({ page }) => {
     await openTracks(page)
 

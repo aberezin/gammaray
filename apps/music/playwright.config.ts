@@ -1,5 +1,11 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// Under claudebox, the music frontend is a sibling container reachable at
+// $CLAUDEBOX_VM_IP:3010 rather than localhost — honor an env override so the
+// same suite runs from inside the container. Defaults keep the local flow.
+const FRONTEND_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3010'
+const API_URL = process.env.PLAYWRIGHT_API_URL || 'http://localhost:3001'
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
@@ -9,7 +15,7 @@ export default defineConfig({
   reporter: [['html', { open: 'never' }], ['line']],
 
   use: {
-    baseURL: 'http://localhost:3010',
+    baseURL: FRONTEND_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'on-first-retry',
@@ -22,13 +28,13 @@ export default defineConfig({
   webServer: [
     {
       command: 'pnpm --filter @gammaray/api dev',
-      url: 'http://localhost:3001/graphql',
+      url: `${API_URL}/graphql`,
       reuseExistingServer: true,
       timeout: 30_000,
     },
     {
       command: 'pnpm --filter @gammaray/music dev',
-      url: 'http://localhost:3010',
+      url: FRONTEND_URL,
       reuseExistingServer: true,
       timeout: 30_000,
     },

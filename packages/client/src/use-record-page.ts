@@ -209,6 +209,11 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
   const gqlClient = useRef(makeGqlClient())
   const clientId = useRef<string>(randomUUID())
   const primaryReplication = useRef<ReturnType<typeof startRowReplication> | null>(null)
+  // The shared BatchCoordinator. Held in a ref so `update`/`remove` on a
+  // `paged` table can enqueue directly — those rows aren't in RxDB (paged
+  // tables don't bulk-pull) so RxDB's push handler never fires for edits to
+  // them; going through the coordinator bypasses that entire code path.
+  const coordinatorRef = useRef<BatchCoordinator | null>(null)
   const resolvedRef = useRef(resolvedLabels)
   resolvedRef.current = resolvedLabels
 
@@ -270,6 +275,13 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
           setConflict({ id: c.id, mine: c.clientData, theirs: c.serverData })
         }
       })
+      // Register this descriptor so the coordinator can serialize direct
+      // enqueues (see update/remove for paged tables) with the right field
+      // shape. startRowReplication registers each collection it starts;
+      // that covers everything except the case where a paged primary's
+      // startRowReplication call happens later (a few lines down).
+      coordinator.register(descriptor)
+      coordinatorRef.current = coordinator
       started = liveCollections.map((collection) =>
         startRowReplication(getDescriptor(collection), rowCollection(db, collection), gqlClient.current, getAccessToken, coordinator),
       )
@@ -298,6 +310,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
         void r.wsClient.dispose()
       })
       primaryReplication.current = null
+      coordinatorRef.current = null
     }
   }, [offline, liveCollections, paged, descriptor])
 
@@ -493,19 +506,61 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
 
   async function update(id: string, draft: Record<string, unknown>): Promise<void> {
     const db = await getDatabase()
-    const doc = await rowCollection(db, descriptor.collection).findOne(id).exec()
-    if (doc) await doc.patch(coerceWritable(descriptor, draft))
-    await reconcileMultiRefs(id, draft)
+    const coll = rowCollection(db, descriptor.collection)
+    const writable = coerceWritable(descriptor, draft)
+
+    // Optimistic paged-list update — reflect the edit immediately, before any
+    // network round-trip. The server-authoritative fields (bumped `version`,
+    // fresh `updatedAt`) overwrite this in the coordinator branch below.
     if (paged) {
-      const writable = coerceWritable(descriptor, draft)
       setPagedRows((prev) => prev.map((r) => (String(r.id) === id ? { ...r, ...writable } : r)))
     }
+
+    const doc = await coll.findOne(id).exec()
+    if (doc) {
+      // Standard path: RxDB has the row; patching triggers its push handler.
+      await doc.patch(writable)
+    } else if (paged && coordinatorRef.current) {
+      // A paged table's rows aren't bulk-pulled into RxDB, so `findOne`
+      // returns null for a row loaded via `pageRows` — patch is a no-op and
+      // RxDB's push handler never fires. Enqueue the change directly through
+      // the batch coordinator using the loaded page's row as the baseline;
+      // its `version` becomes the `expectedVersion` the server checks.
+      const baseline = pagedRows.find((r) => String(r.id) === id)
+      if (baseline) {
+        const merged = { ...baseline, ...writable, id, _deleted: false } as RowRecord
+        const reconciled = await coordinatorRef.current.enqueue(descriptor.table, [
+          { newDocumentState: merged, assumedMasterState: baseline },
+        ])
+        // Adopt the server's authoritative row (bumped version + updatedAt).
+        const serverRow = reconciled[0] as Record<string, unknown> | undefined
+        if (serverRow) {
+          setPagedRows((prev) => prev.map((r) => (String(r.id) === id ? { ...r, ...serverRow } : r)))
+        }
+      }
+    }
+
+    await reconcileMultiRefs(id, draft)
   }
 
   async function remove(id: string): Promise<void> {
     const db = await getDatabase()
-    const doc = await rowCollection(db, descriptor.collection).findOne(id).exec()
-    if (doc) await doc.remove()
+    const coll = rowCollection(db, descriptor.collection)
+    const doc = await coll.findOne(id).exec()
+    if (doc) {
+      await doc.remove()
+    } else if (paged && coordinatorRef.current) {
+      // Same paged-table gap as update: findOne is null for a row that only
+      // lives in the loaded page. Enqueue a delete directly through the
+      // coordinator so the server soft-deletes and version-bumps.
+      const baseline = pagedRows.find((r) => String(r.id) === id)
+      if (baseline) {
+        const tombstone = { ...baseline, id, _deleted: true } as RowRecord
+        await coordinatorRef.current.enqueue(descriptor.table, [
+          { newDocumentState: tombstone, assumedMasterState: baseline },
+        ])
+      }
+    }
     if (paged) {
       setPagedRows((prev) => prev.filter((r) => String(r.id) !== id))
       setPageTotal((t) => Math.max(0, t - 1))
