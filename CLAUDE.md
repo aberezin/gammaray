@@ -147,6 +147,8 @@ Two things worth knowing when editing here:
 
 If automated testing is expensive or requires infrastructure setup, discuss with the team first — manual tests are acceptable if well-documented.
 
+**Ad-hoc CDP scripts (`cb-browser cdp` / `cb-browser script` driving the human's real Chrome via the browser bridge):** the tabs opened by `context.newPage()` **do not go away when the script exits** — `browser.close()` only detaches the CDP connection; the tab lives on in the human's Chrome until explicitly closed. Wrap the whole script body in `try { ... } finally { await page.close() }` (and hook `SIGINT`/`SIGTERM` to the same cleanup) so a crash mid-run doesn't leak a tab. Do NOT try to sweep multiple tabs by URL on crash — the human may have their own legitimate tabs open at the same URL.
+
 ### Working with executable scripts
 
 The Edit tool loses file permissions (executable bit) when modifying files. When editing shell scripts (`.sh`) or other executables:
