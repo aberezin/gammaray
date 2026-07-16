@@ -63,6 +63,12 @@ export class BatchCoordinator {
   // expectedVersion so rapid successive edits don't depend on RxDB's reconcile
   // (assumedMasterState) having caught up.
   private readonly versions = new Map<string, number>()
+  // Count of rows that have been enqueued but whose push hasn't settled yet
+  // (resolved or rejected). Consumers subscribe via `onPendingChange` to drive
+  // the "Syncing…" UI — an honest indicator that reflects unflushed local
+  // writes, not just socket state.
+  private pending = 0
+  private readonly pendingListeners = new Set<(n: number) => void>()
 
   constructor(
     private readonly gqlClient: GraphQLClient,
@@ -74,7 +80,25 @@ export class BatchCoordinator {
     this.descriptors.set(descriptor.table, descriptor)
   }
 
+  /** Subscribe to pending-row-count changes. Fires with the current count
+   *  synchronously so the caller can seed its state. Returns an unsub. */
+  onPendingChange(listener: (n: number) => void): () => void {
+    this.pendingListeners.add(listener)
+    listener(this.pending)
+    return () => { this.pendingListeners.delete(listener) }
+  }
+
+  private notifyPending() {
+    for (const l of this.pendingListeners) l(this.pending)
+  }
+
   enqueue(table: string, rows: Array<{ newDocumentState: RowRecord; assumedMasterState?: RowRecord }>) {
+    this.pending += rows.length
+    this.notifyPending()
+    const settle = () => {
+      this.pending = Math.max(0, this.pending - rows.length)
+      this.notifyPending()
+    }
     return new Promise<SyncDoc[]>((resolve, reject) => {
       for (const r of rows) {
         // Prefer assumedMasterState.version (RxDB's belief about the server's
@@ -93,7 +117,7 @@ export class BatchCoordinator {
       this.calls.push({ table, ids: rows.map((r) => String(r.newDocumentState.id)), resolve, reject })
       if (this.timer) clearTimeout(this.timer)
       this.timer = setTimeout(() => void this.flush(), 60)
-    })
+    }).then((v) => { settle(); return v }, (e) => { settle(); throw e })
   }
 
   private async flush() {

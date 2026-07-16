@@ -191,6 +191,11 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
   // Labels for searchable targets, resolved on demand by id.
   const [resolvedLabels, setResolvedLabels] = useState<Record<string, Record<string, string>>>({})
   const [offline, setOffline] = useState(false)
+  // Count of enqueued rows whose push hasn't yet settled. Combined with
+  // `offline` in a derived syncStatus effect below — this is what makes the
+  // "Syncing…" state observable, so a stuck write doesn't silently look
+  // "● Synced" to the user or a test.
+  const [pending, setPending] = useState(0)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncStatus.Synced)
   const [conflict, setConflict] = useState<RecordConflict | null>(null)
 
@@ -256,8 +261,10 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
   }, [liveCollections])
 
   useEffect(() => {
-    setSyncStatus(offline ? SyncStatus.Offline : SyncStatus.Synced)
-  }, [offline])
+    if (offline) setSyncStatus(SyncStatus.Offline)
+    else if (pending > 0) setSyncStatus(SyncStatus.Syncing)
+    else setSyncStatus(SyncStatus.Synced)
+  }, [offline, pending])
 
   // Replication — every replicated collection shares ONE BatchCoordinator so
   // sibling writes (e.g. a new company + a contact referencing it) ride a single
@@ -267,6 +274,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     if (offline) return
     let active = true
     let started: Array<ReturnType<typeof startRowReplication>> = []
+    let unsubPending: (() => void) | null = null
     async function init() {
       const db = await getDatabase()
       if (!active) return
@@ -282,6 +290,9 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
       // startRowReplication call happens later (a few lines down).
       coordinator.register(descriptor)
       coordinatorRef.current = coordinator
+      // Feed the coordinator's in-flight count into local state so the
+      // "Syncing…" indicator is honest about pending pushes.
+      unsubPending = coordinator.onPendingChange((n) => setPending(n))
       started = liveCollections.map((collection) =>
         startRowReplication(getDescriptor(collection), rowCollection(db, collection), gqlClient.current, getAccessToken, coordinator),
       )
@@ -305,12 +316,15 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     void init()
     return () => {
       active = false
+      unsubPending?.()
+      unsubPending = null
       started.forEach((r) => {
         void r.replication.cancel()
         void r.wsClient.dispose()
       })
       primaryReplication.current = null
       coordinatorRef.current = null
+      setPending(0)
     }
   }, [offline, liveCollections, paged, descriptor])
 

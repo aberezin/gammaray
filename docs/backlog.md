@@ -106,14 +106,6 @@ here. When it ships, drop it.
   reflect the expected bump on save, show a transient "saving…/syncing…"
   state on those fields, or disable them until reconciled. Purely
   cosmetic; no data is wrong.
-- **Pending-vs-flushed sync indicator on the type-A pages.** The type-A
-  pages show a `SyncIndicator` ("● Synced"), but it reflects only the
-  online/offline toggle, not whether local writes have actually flushed
-  to the server — a user can't tell pending from synced. Drive a true
-  synced/pending state from the replication `active$` and/or the
-  `BatchCoordinator`'s in-flight buffer (pending while rows are
-  buffered/un-acked, synced once the batch commits).
-
 ## Framework layout / packaging
 
 - **Split `packages/database` into per-app packages.** Entities are now

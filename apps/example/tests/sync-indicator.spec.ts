@@ -34,4 +34,28 @@ test.describe('Sync indicator', () => {
     await page.getByRole('button', { name: 'Offline (click to sync)' }).click()
     await waitForSynced(page)
   })
+
+  // The indicator must reflect *pending local writes*, not just the online
+  // socket. An honest "Syncing…" state is what would have made the
+  // paged-table-edit-silently-dropped bug loud from day one — the indicator
+  // would have stayed on "Syncing…" instead of flipping straight to
+  // "Synced". This exercises: save → Syncing appears briefly → Synced.
+  test('save-while-online shows Syncing briefly, then Synced', async ({ page }) => {
+    await register(page, uniqueEmail('sync-pending'))
+    await page.goto('/contacts')
+    await waitForSynced(page)
+
+    // Kick off a write that has to round-trip through pushBatch.
+    await page.getByRole('button', { name: 'New contact' }).click()
+    await page.getByLabel('First name').fill('Pending')
+    await page.getByLabel('Last name').fill(`Check-${Date.now()}`)
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    // "Syncing…" must appear before the batch settles. Playwright polls
+    // every ~100ms and the push has a client→server round-trip, so this
+    // catches the intermediate state reliably.
+    await expect(page.getByText(/Syncing/i)).toBeVisible({ timeout: 2000 })
+    // Then it settles.
+    await waitForSynced(page, 8000)
+  })
 })
