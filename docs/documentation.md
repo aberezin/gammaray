@@ -76,6 +76,13 @@ change. Batch them into the same PR — a stale doc is worse than no doc.
 - **New agent-facing convention** (a rule that would surprise an editor who
   didn't know it) → `CLAUDE.md`. If it's just a fact about the current
   codebase that can be read directly, don't add it — that's noise.
+- **Rule about a `cb-*` command, `CLAUDEBOX_*` env var, the VM IP, the
+  claudebox browser bridge, or any other framework-level artifact** →
+  **do not add it to this repo.** File it upstream with `cb-report-bug`
+  (missing-docs / defect) or `cb-consult` (best-practice question) so
+  every claudebox project benefits, not just this one. **Fast check:**
+  does the rule reference any gammaray code, schema, or app name? If
+  no, it's framework.
 - **New load test or a substantial perf shift** → dated entry in
   `load-tests/RESULTS.md` and update the summary in `load-tests/README.md`.
 - **New shared term** (a word other docs will lean on — e.g. adding a
