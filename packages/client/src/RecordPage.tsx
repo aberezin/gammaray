@@ -24,7 +24,12 @@ interface Props {
 // wrapper: <RecordPage descriptor={fooDescriptor} title="Foos" />.
 export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth = 1000 }: Props) {
   const page = useRecordPage(descriptor, accessToken)
-  const { records, referenceLabels, joinRows, quickAddTargets, suspect, pagination } = page
+  const { records, referenceLabels, joinRows, quickAddTargets, suspect, pagedOffline, pagination } = page
+  // Any write on a paged table (except CREATE, which queues via RxDB) must be
+  // blocked while offline — direct-coordinator writes have no offline queue
+  // (ADR 0014). `suspect` already gates everything; `pagedOffline` adds the
+  // scope-specific block for editing an existing paged row.
+  const editingBlocked = suspect || pagedOffline
 
   // Debounced search box for a paged table (drives the server-side `filter`).
   const [search, setSearch] = useState('')
@@ -251,8 +256,8 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
                 <h2 style={{ margin: 0, fontSize: 15, color: '#374151' }}>Record</h2>
                 {!editing && (
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={startEdit} disabled={suspect} style={smallBtn(suspect ? '#e5e7eb' : '#3b82f6', !suspect)}>Edit</button>
-                    <button onClick={() => void handleDelete()} disabled={suspect} style={smallBtn(suspect ? '#e5e7eb' : '#ef4444', !suspect)}>Delete</button>
+                    <button onClick={startEdit} disabled={editingBlocked} style={smallBtn(editingBlocked ? '#e5e7eb' : '#3b82f6', !editingBlocked)}>Edit</button>
+                    <button onClick={() => void handleDelete()} disabled={editingBlocked} style={smallBtn(editingBlocked ? '#e5e7eb' : '#ef4444', !editingBlocked)}>Delete</button>
                   </div>
                 )}
               </div>
@@ -267,7 +272,7 @@ export function RecordPage({ descriptor, accessToken, title, navLinks, maxWidth 
                     references={formReferences(selectedId)}
                   />
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={() => void handleSaveEdit()} disabled={suspect} style={saveBtn(suspect)}>Save</button>
+                    <button onClick={() => void handleSaveEdit()} disabled={editingBlocked} style={saveBtn(editingBlocked)}>Save</button>
                     <button onClick={() => setEditing(false)} style={cancelBtn}>Cancel</button>
                   </div>
                 </>

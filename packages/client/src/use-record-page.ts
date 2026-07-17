@@ -136,6 +136,13 @@ export interface UseRecordPage {
   syncStatus: SyncStatus
   /** True when the local replica is untrusted → the UI goes read-only. */
   suspect: boolean
+  /** True when this is a `paged` table AND the user is offline. Paged writes
+   *  bypass RxDB (ADR 0014) and go direct through the BatchCoordinator, so
+   *  there is no offline write queue — the UI must block edit/delete while
+   *  offline instead of accepting an edit that will silently vanish.
+   *  Create still works: it inserts into RxDB (which queues) and only later
+   *  materializes into the paged list. */
+  pagedOffline: boolean
   conflict: RecordConflict | null
   create: (draft: Record<string, unknown>) => Promise<string>
   update: (id: string, draft: Record<string, unknown>) => Promise<void>
@@ -523,6 +530,11 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     const coll = rowCollection(db, descriptor.collection)
     const writable = coerceWritable(descriptor, draft)
 
+    // Snapshot the pre-optimistic row so we can roll back if the direct-
+    // coordinator push fails (paged branch only; RxDB owns the rollback on
+    // the standard patch path).
+    const preOptimistic = paged ? pagedRows.find((r) => String(r.id) === id) : undefined
+
     // Optimistic paged-list update — reflect the edit immediately, before any
     // network round-trip. The server-authoritative fields (bumped `version`,
     // fresh `updatedAt`) overwrite this in the coordinator branch below.
@@ -540,16 +552,27 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
       // RxDB's push handler never fires. Enqueue the change directly through
       // the batch coordinator using the loaded page's row as the baseline;
       // its `version` becomes the `expectedVersion` the server checks.
-      const baseline = pagedRows.find((r) => String(r.id) === id)
+      const baseline = preOptimistic
       if (baseline) {
         const merged = { ...baseline, ...writable, id, _deleted: false } as RowRecord
-        const reconciled = await coordinatorRef.current.enqueue(descriptor.table, [
-          { newDocumentState: merged, assumedMasterState: baseline },
-        ])
-        // Adopt the server's authoritative row (bumped version + updatedAt).
-        const serverRow = reconciled[0] as Record<string, unknown> | undefined
-        if (serverRow) {
-          setPagedRows((prev) => prev.map((r) => (String(r.id) === id ? { ...r, ...serverRow } : r)))
+        try {
+          const reconciled = await coordinatorRef.current.enqueue(descriptor.table, [
+            { newDocumentState: merged, assumedMasterState: baseline },
+          ])
+          // Adopt the server's authoritative row (bumped version + updatedAt).
+          const serverRow = reconciled[0] as Record<string, unknown> | undefined
+          if (serverRow) {
+            setPagedRows((prev) => prev.map((r) => (String(r.id) === id ? { ...r, ...serverRow } : r)))
+          }
+        } catch (err) {
+          // Push failed (server error, network, offline) — roll back the
+          // optimistic list change so the user isn't left thinking their
+          // edit landed. Re-throw so the caller (RecordPage's Save handler)
+          // stays in Edit mode as a soft signal that something went wrong.
+          if (baseline) {
+            setPagedRows((prev) => prev.map((r) => (String(r.id) === id ? baseline : r)))
+          }
+          throw err
         }
       }
     }
@@ -563,21 +586,31 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     const doc = await coll.findOne(id).exec()
     if (doc) {
       await doc.remove()
+      if (paged) {
+        setPagedRows((prev) => prev.filter((r) => String(r.id) !== id))
+        setPageTotal((t) => Math.max(0, t - 1))
+      }
     } else if (paged && coordinatorRef.current) {
       // Same paged-table gap as update: findOne is null for a row that only
       // lives in the loaded page. Enqueue a delete directly through the
       // coordinator so the server soft-deletes and version-bumps.
       const baseline = pagedRows.find((r) => String(r.id) === id)
       if (baseline) {
+        // Optimistic: remove from the list now; roll back on failure.
+        setPagedRows((prev) => prev.filter((r) => String(r.id) !== id))
+        setPageTotal((t) => Math.max(0, t - 1))
         const tombstone = { ...baseline, id, _deleted: true } as RowRecord
-        await coordinatorRef.current.enqueue(descriptor.table, [
-          { newDocumentState: tombstone, assumedMasterState: baseline },
-        ])
+        try {
+          await coordinatorRef.current.enqueue(descriptor.table, [
+            { newDocumentState: tombstone, assumedMasterState: baseline },
+          ])
+        } catch (err) {
+          // Push failed — restore the row + total so the UI matches reality.
+          setPagedRows((prev) => [baseline, ...prev])
+          setPageTotal((t) => t + 1)
+          throw err
+        }
       }
-    }
-    if (paged) {
-      setPagedRows((prev) => prev.filter((r) => String(r.id) !== id))
-      setPageTotal((t) => Math.max(0, t - 1))
     }
   }
 
@@ -667,6 +700,7 @@ export function useRecordPage(descriptor: TableDescriptor, accessToken: string):
     setOffline,
     syncStatus,
     suspect,
+    pagedOffline: paged && offline,
     conflict,
     create,
     update,

@@ -125,6 +125,67 @@ test.describe('Tracks — at-scale paged list', () => {
     await expect(rows(page).filter({ hasText: marker })).toHaveCount(0, { timeout: 8_000 })
   })
 
+  // Paged writes bypass RxDB (ADR 0014) and enqueue direct through the
+  // BatchCoordinator — no RxDB offline queue. So an edit while the
+  // OfflineToggle is off can't queue, and the app must not let one silently
+  // vanish. Save is disabled while offline for the paged path.
+  test('paged rows: Save is disabled while offline (writes cannot queue)', async ({ page }) => {
+    await openTracks(page)
+
+    const originalTitle = await firstTitle(page)
+
+    // Open edit mode on the first seeded track while ONLINE.
+    await rows(page).first().click()
+    await page.getByRole('button', { name: 'Edit' }).click()
+    await page.getByLabel('Title', { exact: true }).fill(`${originalTitle} [would-be-offline-edit]`)
+
+    // Now toggle offline. Save should be disabled — a paged edit can't
+    // reach the server and RxDB can't queue it for later.
+    await page.getByRole('button', { name: 'Online' }).click()
+    await expect(page.getByText('● Offline')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
+
+    // Cancel out; go back online; confirm the seed is unchanged.
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await page.getByRole('button', { name: 'Offline (click to sync)' }).click()
+    await waitForSynced(page)
+    expect(await firstTitle(page)).toEqual(originalTitle)
+  })
+
+  // If the push fails (server error, transient network) after Save, the
+  // optimistic pagedRows change must roll back — otherwise the user sees a
+  // stale local edit that never reached the server.
+  test('paged rows: server error on save rolls back the optimistic edit', async ({ page }) => {
+    await openTracks(page)
+
+    const originalTitle = await firstTitle(page)
+
+    // Intercept the pushBatch mutation and return a 500 once.
+    let intercepted = false
+    await page.route('**/graphql', async (route) => {
+      const body = route.request().postData() || ''
+      if (!intercepted && body.includes('pushBatch')) {
+        intercepted = true
+        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ errors: [{ message: 'simulated' }] }) })
+      } else {
+        await route.continue()
+      }
+    })
+
+    await rows(page).first().click()
+    await page.getByRole('button', { name: 'Edit' }).click()
+    const brokenTitle = `${originalTitle} [broken]`
+    await page.getByLabel('Title', { exact: true }).fill(brokenTitle)
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    // The push fails. The list must not show the broken title indefinitely —
+    // roll back to the original within a short window.
+    await expect.poll(async () => firstTitle(page), { timeout: 8000 }).toEqual(originalTitle)
+    // And the request must actually have been intercepted (guards against the
+    // test silently passing because Save didn't fire pushBatch at all).
+    expect(intercepted).toBe(true)
+  })
+
   test('create round-trips through the paged path; delete cleans up', async ({ page }) => {
     await openTracks(page)
 
