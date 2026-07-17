@@ -90,6 +90,22 @@ test (Playwright) if it only manifests through the running app.
 When a single change touches multiple distinct defects, prefer **one failing
 test per defect** so each can be fixed and verified independently.
 
+### CI
+
+Every PR and every push to `main` runs
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
+
+- **Lint** — `pnpm lint` (Turbo — `tsc --noEmit` in every workspace package
+  with cross-package types resolved via built deps).
+- **e2e** — Rolodex and Crate Playwright suites run in parallel, each
+  against its own Postgres service. Migrations + seed run once before the
+  suite (ADR 0011 — idempotent). On failure, the Playwright HTML report +
+  traces are uploaded as artifacts.
+
+Local iteration should mirror this: `pnpm lint` before pushing catches
+type errors; the e2e suites (per `DEV_SETUP.md`) catch runtime regressions
+in the same code paths CI exercises.
+
 ### Open: merge strategy
 
 **Undecided:** whether pull requests should be squash-merged or merged with a

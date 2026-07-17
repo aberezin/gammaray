@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel in-flight runs on the same PR/branch when a new push arrives — the
+# result of the earlier run no longer matters and burns runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Same fixed dev values docker-compose.yml uses. Runners are ephemeral, so
+  # there is nothing sensitive here — matching the compose values keeps the
+  # local ↔ CI story identical (`docker compose up -d` mirrors this).
+  DATABASE_HOST: localhost
+  DATABASE_PORT: 5432
+  DATABASE_USER: gammaray
+  DATABASE_PASSWORD: gammaray
+  DATABASE_NAME: gammaray
+  # NextAuth requires a secret when AUTH_TRUST_HOST is on.
+  AUTH_SECRET: ci-only-not-a-real-secret-abcdefghij
+  AUTH_TRUST_HOST: 'true'
+  # The frontends and Playwright all address the API on localhost in CI.
+  NEXT_PUBLIC_API_URL: http://localhost:3001
+  API_INTERNAL_URL: http://localhost:3001
+  # CORS: allow both frontends' host origins (used by both e2e jobs).
+  CORS_ORIGINS: http://localhost:3000,http://localhost:3010
+
+jobs:
+  # Fast type-check + build in one job. Turbo's `^build` on the `lint` task
+  # means each package's dependencies get built before it type-checks, so this
+  # also validates cross-package types.
+  lint:
+    name: Lint (tsc --noEmit) across the workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Turbo lints each package with its deps built first (turbo.json:
+      # `lint.dependsOn: ["^build"]`), so this covers both type-check and
+      # cross-package resolution.
+      - name: pnpm lint (turbo — builds deps as needed)
+        run: pnpm lint
+
+  # Each app's Playwright suite. The matrix runs Rolodex + Crate in parallel
+  # against their own Postgres service; nothing is shared, so a failure in one
+  # doesn't cascade.
+  e2e:
+    name: e2e — ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: example
+            filter: '@gammaray/example'
+            port: 3000
+          - app: music
+            filter: '@gammaray/music'
+            port: 3010
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gammaray
+          POSTGRES_PASSWORD: gammaray
+          POSTGRES_DB: gammaray
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gammaray"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Playwright's webServer starts the API + this app's frontend; the
+      # NEXTAUTH_URL matches the app's port so the callback URL is right.
+      NEXTAUTH_URL: http://localhost:${{ matrix.port }}
+      PORT: ${{ matrix.port }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Turbo builds workspace packages in dep order (core → auth →
+      # rolodex-schema/music-schema → database → api). Pre-building the API's
+      # deps keeps its ts-node cold-start fast enough for the Playwright
+      # webServer timeout. Skip the two Next.js apps here — `next build` is
+      # slow (5+ min each) and the webServer runs them in dev mode anyway;
+      # `tsc --noEmit` (in the `lint` job) is what type-checks them.
+      - name: Build workspace packages (deps only, not the Next apps)
+        run: >
+          pnpm turbo build
+          --filter='!@gammaray/example'
+          --filter='!@gammaray/music'
+
+      # Rolodex's globalSetup runs `db:migrate` + `db:seed`. Music's does not,
+      # so run them up front for both — idempotent (ADR 0011). One command
+      # covers both apps' seed data (see apps/api/src/seed/schema-seeds.ts).
+      - name: Migrate + seed the database
+        run: |
+          pnpm --filter @gammaray/api db:migrate
+          pnpm --filter @gammaray/api db:seed
+
+      # Playwright browsers get their own cache — Ubuntu deps are stable
+      # per major, so we key on OS + Playwright version.
+      - name: Get installed Playwright version
+        id: pw-version
+        run: |
+          v=$(pnpm --filter ${{ matrix.filter }} exec playwright --version | awk '{print $2}')
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw-version.outputs.version }}
+
+      - name: Install Playwright browsers (chromium + system deps)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter ${{ matrix.filter }} exec playwright install --with-deps chromium
+
+      # Ensure Chromium's own OS deps are present even when we hit the
+      # browsers cache (the cache holds the browser binaries, not apt libs).
+      - name: Ensure Chromium system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter ${{ matrix.filter }} exec playwright install-deps chromium
+
+      - name: Run Playwright e2e
+        env:
+          CI: 'true'
+        run: pnpm --filter ${{ matrix.filter }} test:e2e
+
+      # On failure, upload the Playwright HTML report + trace artifacts so a
+      # human can open them offline.
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.app }}
+          path: |
+            apps/${{ matrix.app }}/playwright-report
+            apps/${{ matrix.app }}/test-results
+          retention-days: 7
