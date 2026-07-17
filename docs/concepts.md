@@ -115,12 +115,50 @@ Writes to a paged row bypass RxDB and go straight through the
 `BatchCoordinator` — the row isn't in RxDB to observe, so
 `useRecordPage` enqueues directly using the loaded page's row as the
 `assumedMasterState`. Consequence: paged rows lose RxDB's offline write
-queue (a paged edit made while offline never fires), which matches the
-"not fully offline" scope of the opt-in.
+queue (a paged edit made while offline is blocked in the UI, not
+queued), which matches the "not fully offline" scope of the opt-in.
 
 See [ADR 0013](adr/0013-at-scale-paged-tables.md) for the opt-in itself
 and [ADR 0014](adr/0014-paged-write-direct-through-coordinator.md) for
 the write path.
+
+### Choosing `paged` vs full-replicated
+
+The default (unpaged) is right for **most tables**. Only turn `paged` on
+when the memory ceiling of a full replica is a real problem *for this
+specific table* and you've accepted the offline write cost.
+
+Ask, in order:
+
+1. **Row count.** Will this table plausibly grow past ~10³–10⁴ rows on a
+   real user's device? If no, leave it unpaged — the full-replica
+   offline-first model is strictly better along every axis (offline
+   browse, offline edit queue, in-memory filter, no server pagination
+   round-trips).
+2. **Offline write matters?** Will your users edit or delete existing
+   rows while offline (planes, tunnels, spotty coffee shops)? If yes,
+   leaving it unpaged keeps RxDB's write queue. If `paged` is on, the
+   UI blocks Edit/Delete/Save-in-edit while offline (create still
+   queues) — an honest signal but not the same UX.
+3. **How is this table searched?** A paged table's list is server-sorted
+   and server-filtered; the client can no longer do a rich in-memory
+   filter of an unpulled set. If your UX depends on complex client-side
+   filtering, paged forces you to push those filters into the server
+   query (`filter`, `sort`, `dir`) or a proper full-text search — worth
+   confirming the server side can express what the UI needs.
+4. **Reference target?** If this table is the target of a
+   `Reference`/`MultiReference` field on other tables, prefer marking
+   *the field* `searchable` first (ADR 0007 baseline; extended per PR
+   #31) — that alone keeps the target from being replicated to every
+   client while still allowing full offline browse of the target
+   itself, so it's the lighter tool for the same job at the
+   reference-picker layer.
+
+**Canonical yes:** Crate's `track` — the app's largest table, browsed
+in-app, editable by the logged-in curator, no realistic offline-edit
+requirement. **Canonical no:** every other table in either example app
+— they're small, referenced, or both, and the full-replica model gives
+better UX for zero cost.
 
 ## Data epoch / reslate
 

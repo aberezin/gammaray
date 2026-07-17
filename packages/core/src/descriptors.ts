@@ -105,11 +105,25 @@ export interface TableDescriptor {
    * the client's local store; its list is fetched one page at a time from the
    * server via the generic keyset `pageRows` query (server-side sort + filter), so
    * memory stays bounded at the server, the client store, and the UI regardless of
-   * row count. The trade-off, paid only by tables that opt in: no full offline
-   * browse of this table (loaded rows are still editable and still push via
-   * pushBatch). Leave off (default) for lookup/reference tables and anything that
-   * comfortably fits a local store — those keep the full-replica offline-first
-   * model. Default false.
+   * row count.
+   *
+   * Trade-offs, paid only by tables that opt in (ADR 0013 + ADR 0014):
+   *  - No full offline browse of this table — only the current page is local.
+   *  - **No offline queue for edits/deletes** on loaded rows. Because the row
+   *    isn't in RxDB, `update`/`remove` bypass replication and go direct through
+   *    the BatchCoordinator; the UI blocks Edit/Delete/Save-in-edit while offline
+   *    to keep those writes from silently vanishing.
+   *  - Create still works offline (it inserts into RxDB and queues via the
+   *    normal replication push).
+   *
+   * Rule of thumb: leave off (default) for lookup/reference tables and anything
+   * that fits a local store — those keep the full-replica offline-first model.
+   * Turn on for large user-facing catalogs (Crate `track` is the canonical
+   * example) where the memory ceiling of a full replica is the real problem
+   * and the offline-write cost is acceptable. See docs/concepts.md
+   * "Choosing paged vs full-replicated" for the decision heuristic.
+   *
+   * Default false.
    */
   paged?: boolean
   /** Fields used to summarize a row in a list/title. */
