@@ -109,10 +109,18 @@ the client's local store; its list is fetched one page at a time from the
 server via the generic keyset `pageRows` query (server-side sort + filter).
 Memory stays bounded at the server, the client store, and the UI regardless
 of row count. The trade-off — no full offline browse of that table (loaded
-rows are still editable and still push via the usual batch) — is paid only
-by tables that opt in.
+rows are still editable) — is paid only by tables that opt in.
 
-See [ADR 0013](adr/0013-at-scale-paged-tables.md).
+Writes to a paged row bypass RxDB and go straight through the
+`BatchCoordinator` — the row isn't in RxDB to observe, so
+`useRecordPage` enqueues directly using the loaded page's row as the
+`assumedMasterState`. Consequence: paged rows lose RxDB's offline write
+queue (a paged edit made while offline never fires), which matches the
+"not fully offline" scope of the opt-in.
+
+See [ADR 0013](adr/0013-at-scale-paged-tables.md) for the opt-in itself
+and [ADR 0014](adr/0014-paged-write-direct-through-coordinator.md) for
+the write path.
 
 ## Data epoch / reslate
 

@@ -143,6 +143,14 @@ hold the detailed argument for individual decisions.
   at server, client store, and UI. The cost — no full offline browse of that table
   — is paid only by tables that opt in; small tables stay full-replica offline-first.
   Extends the `searchable` reference opt-in (PR #31) from a field to a whole table.
+- [ADR 0014 — Paged-table writes bypass RxDB replication and go directly through the BatchCoordinator](./docs/adr/0014-paged-write-direct-through-coordinator.md):
+  ADR 0013 claimed "writes are unchanged" for paged tables; the implementation
+  hit a fatal gap because RxDB's push handler assumes the row is in the local
+  store. Fix: `useRecordPage.update`/`remove` for paged tables enqueue directly
+  through the `BatchCoordinator` using the loaded page's row as
+  `assumedMasterState`. The trade-off — no RxDB offline queueing for paged
+  writes — matches ADR 0013's "not fully offline" scope. (Fixed in `b97035d`;
+  regression test in `apps/music/tests/tracks-paged.spec.ts`.)
 
 ## Performance & Capacity (load testing)
 

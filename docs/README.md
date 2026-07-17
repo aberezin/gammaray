@@ -42,6 +42,7 @@ Decision Records (ADRs)`.
 | [0011](adr/0011-database-seeding.md) | Database seeding (engine-driven, decoupled from migrations) |
 | [0012](adr/0012-data-epoch-reslate.md) | Data epoch + client reslate for server-reset divergence |
 | [0013](adr/0013-at-scale-paged-tables.md) | At-scale tables: per-table opt-in server pagination |
+| [0014](adr/0014-paged-write-direct-through-coordinator.md) | Paged-table writes bypass RxDB replication and go directly through the BatchCoordinator |
 
 ## Load testing
 
